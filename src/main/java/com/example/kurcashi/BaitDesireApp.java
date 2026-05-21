@@ -66,7 +66,6 @@ public class BaitDesireApp extends Application {
 
     private static final Logger LOGGER = Logger.getLogger(BaitDesireApp.class.getName());
 
-    // Константы для дублирующихся строк
     private static final String STYLE_BG_TRANSPARENT = "-fx-background-color: transparent;";
     private static final String STYLE_BG_CARD_PREFIX = "-fx-background-color: ";
     private static final String STYLE_TEXT_FILL_PREFIX = "-fx-text-fill: ";
@@ -123,7 +122,7 @@ public class BaitDesireApp extends Application {
     public static final String ERROR = "#c97b7b";
     public static final String BORDER_COLOR = "#ffcce0";
 
-    // Цвета для темной темы
+    // Цвета для тёмной темы
     public static final String BG_LIGHT_DARK = "#0a0a0a";
     public static final String BG_CARD_DARK = "#1a1a1a";
     public static final String BG_DARKER_DARK = "#2a2a2a";
@@ -202,11 +201,19 @@ public class BaitDesireApp extends Application {
             guestId = UUID.randomUUID().toString();
             prefs.put(GUEST_ID_KEY, guestId);
             try (Connection conn = DatabaseConnection.getConnection();
-                 PreparedStatement pstmt = conn.prepareStatement("INSERT INTO guest_carts (guest_id) VALUES (?)")) {
+                 PreparedStatement pstmt = conn.prepareStatement("INSERT INTO guest_carts (guest_id) VALUES (?) ON CONFLICT DO NOTHING")) {
                 pstmt.setString(1, guestId);
                 pstmt.executeUpdate();
             } catch (SQLException e) {
                 LOGGER.log(Level.SEVERE, "Failed to create guest cart", e);
+            }
+        } else {
+            try (Connection conn = DatabaseConnection.getConnection();
+                 PreparedStatement pstmt = conn.prepareStatement("INSERT INTO guest_carts (guest_id) VALUES (?) ON CONFLICT DO NOTHING")) {
+                pstmt.setString(1, guestId);
+                pstmt.executeUpdate();
+            } catch (SQLException e) {
+                LOGGER.log(Level.SEVERE, "Failed to ensure guest cart exists", e);
             }
         }
     }
@@ -232,9 +239,7 @@ public class BaitDesireApp extends Application {
             LOGGER.log(Level.SEVERE, "Failed to load style.css", e);
         }
         scene.setOnKeyPressed(event -> {
-            if (event.getCode() == KeyCode.F11) {
-                toggleFullScreen();
-            }
+            if (event.getCode() == KeyCode.F11) toggleFullScreen();
         });
         return scene;
     }
@@ -251,61 +256,119 @@ public class BaitDesireApp extends Application {
         return currentUser != null && currentUser.getUserId() > 0;
     }
 
-    public void showLoginPrompt(String message) {
-        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-        alert.setTitle("Требуется авторизация");
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        ButtonType login = new ButtonType("Войти");
-        ButtonType register = new ButtonType(LABEL_REGISTRATION);
-        ButtonType cancel = new ButtonType("Отмена", ButtonBar.ButtonData.CANCEL_CLOSE);
-        alert.getButtonTypes().setAll(login, register, cancel);
-        alert.showAndWait().ifPresent(response -> {
-            if (response == login) showLoginView();
-            else if (response == register) showRegisterView();
+    public void showCustomLoginPrompt(String message) {
+        Stage dialogStage = new Stage();
+        dialogStage.initModality(Modality.APPLICATION_MODAL);
+        dialogStage.initOwner(primaryStage);
+        dialogStage.initStyle(StageStyle.TRANSPARENT);
+        dialogStage.setTitle("");
+
+        VBox dialogBox = new VBox(20);
+        dialogBox.setAlignment(Pos.CENTER);
+        dialogBox.setPadding(new Insets(25));
+        dialogBox.setPrefWidth(400);
+        dialogBox.setStyle(STYLE_BG_CARD_PREFIX + getCurrentBgCard() + "; -fx-background-radius: 15; " +
+                "-fx-border-color: " + getCurrentAccent() + "; -fx-border-radius: 15; -fx-border-width: 2;");
+
+        DropShadow dropShadow = new DropShadow();
+        dropShadow.setRadius(20.0);
+        dropShadow.setOffsetX(5.0);
+        dropShadow.setOffsetY(5.0);
+        dropShadow.setColor(Color.color(0, 0, 0, isDarkTheme ? 0.8 : 0.4));
+        dialogBox.setEffect(dropShadow);
+
+        Label titleLabel = new Label("Требуется авторизация");
+        titleLabel.setStyle(STYLE_TEXT_FILL_PREFIX + getCurrentTextPrimary() + "; -fx-font-size: 18px; -fx-font-weight: bold;");
+
+        Label messageLabel = new Label(message);
+        messageLabel.setStyle(STYLE_TEXT_FILL_PREFIX + getCurrentTextSecondary() + STYLE_FONT_SIZE_14);
+        messageLabel.setWrapText(true);
+        messageLabel.setAlignment(Pos.CENTER);
+
+        HBox buttonBox = new HBox(15);
+        buttonBox.setAlignment(Pos.CENTER);
+
+        Button loginButton = new Button("Войти");
+        updateButtonStyle(loginButton);
+        loginButton.setPrefWidth(100);
+        loginButton.setOnAction(e -> {
+            dialogStage.close();
+            showLoginView();
         });
+
+        Button registerButton = new Button("Регистрация");
+        updateButtonStyle(registerButton);
+        registerButton.setPrefWidth(100);
+        registerButton.setOnAction(e -> {
+            dialogStage.close();
+            showRegisterView();
+        });
+
+        Button cancelButton = new Button("Отмена");
+        cancelButton.setStyle(STYLE_BG_TRANSPARENT + STYLE_TEXT_FILL_PREFIX + getCurrentTextSecondary() + STYLE_FONT_SIZE_14 + "; -fx-cursor: hand;");
+        cancelButton.setOnMouseEntered(ev -> cancelButton.setStyle(STYLE_BG_TRANSPARENT + STYLE_TEXT_FILL_PREFIX + getCurrentError() + STYLE_FONT_SIZE_14 + "; -fx-cursor: hand;"));
+        cancelButton.setOnMouseExited(ev -> cancelButton.setStyle(STYLE_BG_TRANSPARENT + STYLE_TEXT_FILL_PREFIX + getCurrentTextSecondary() + STYLE_FONT_SIZE_14 + "; -fx-cursor: hand;"));
+        cancelButton.setOnAction(e -> dialogStage.close());
+
+        buttonBox.getChildren().addAll(loginButton, registerButton, cancelButton);
+        dialogBox.getChildren().addAll(titleLabel, messageLabel, buttonBox);
+
+        Scene scene = new Scene(dialogBox);
+        scene.setFill(null);
+        dialogStage.setScene(scene);
+        dialogStage.setOnShown(e -> {
+            if (primaryStage != null) {
+                dialogStage.setX(primaryStage.getX() + (primaryStage.getWidth() - dialogBox.getPrefWidth()) / 2);
+                dialogStage.setY(primaryStage.getY() + (primaryStage.getHeight() - 250) / 2);
+            } else {
+                dialogStage.centerOnScreen();
+            }
+        });
+        dialogStage.showAndWait();
     }
 
     public void migrateGuestData(String guestId, int newUserId) {
-        String insertCartSql = "INSERT INTO carts (user_id, created_at, updated_at) SELECT ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP " +
+        // 1. Создаём корзину для пользователя, если её нет
+        String ensureCartSql = "INSERT INTO carts (user_id, created_at, updated_at) " +
+                "SELECT ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP " +
                 "WHERE NOT EXISTS (SELECT 1 FROM carts WHERE user_id = ?)";
-        String insertCartItemsSql = "INSERT INTO cart_items (cart_id, product_id, quantity, added_at, updated_at) " +
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(ensureCartSql)) {
+            pstmt.setInt(1, newUserId);
+            pstmt.setInt(2, newUserId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "Failed to ensure user cart", e);
+            return;
+        }
+
+        // 2. Переносим товары из guest_cart_items в cart_items
+        String migrateCartSql = "INSERT INTO cart_items (cart_id, product_id, quantity, added_at, updated_at) " +
                 "SELECT (SELECT cart_id FROM carts WHERE user_id = ?), product_id, quantity, added_at, CURRENT_TIMESTAMP " +
-                "FROM guest_cart_items WHERE guest_id = ?";
-        String insertRecentlySql = "INSERT INTO recently_viewed (user_id, product_id, viewed_at) " +
+                "FROM guest_cart_items WHERE guest_id = ? " +
+                "ON CONFLICT (cart_id, product_id) DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(migrateCartSql)) {
+            pstmt.setInt(1, newUserId);
+            pstmt.setString(2, guestId);
+            int rows = pstmt.executeUpdate();
+            LOGGER.log(Level.INFO, "Migrated {0} cart items", rows);
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "Failed to migrate cart items", e);
+        }
+
+        // 3. Переносим историю просмотров
+        String migrateRecentlySql = "INSERT INTO recently_viewed (user_id, product_id, viewed_at) " +
                 "SELECT ?, product_id, viewed_at FROM guest_recently_viewed WHERE guest_id = ? " +
                 "ON CONFLICT (user_id, product_id) DO UPDATE SET viewed_at = EXCLUDED.viewed_at";
-        String deleteGuestCartItemsSql = "DELETE FROM guest_cart_items WHERE guest_id = ?";
-        String deleteGuestRecentlySql = "DELETE FROM guest_recently_viewed WHERE guest_id = ?";
-
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            conn.setAutoCommit(false);
-            try (PreparedStatement pstmt = conn.prepareStatement(insertCartSql)) {
-                pstmt.setInt(1, newUserId);
-                pstmt.setInt(2, newUserId);
-                pstmt.executeUpdate();
-            }
-            try (PreparedStatement pstmt = conn.prepareStatement(insertCartItemsSql)) {
-                pstmt.setInt(1, newUserId);
-                pstmt.setString(2, guestId);
-                pstmt.executeUpdate();
-            }
-            try (PreparedStatement pstmt = conn.prepareStatement(insertRecentlySql)) {
-                pstmt.setInt(1, newUserId);
-                pstmt.setString(2, guestId);
-                pstmt.executeUpdate();
-            }
-            try (PreparedStatement pstmt = conn.prepareStatement(deleteGuestCartItemsSql)) {
-                pstmt.setString(1, guestId);
-                pstmt.executeUpdate();
-            }
-            try (PreparedStatement pstmt = conn.prepareStatement(deleteGuestRecentlySql)) {
-                pstmt.setString(1, guestId);
-                pstmt.executeUpdate();
-            }
-            conn.commit();
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(migrateRecentlySql)) {
+            pstmt.setInt(1, newUserId);
+            pstmt.setString(2, guestId);
+            int rows = pstmt.executeUpdate();
+            LOGGER.log(Level.INFO, "Migrated {0} recently viewed items", rows);
         } catch (SQLException e) {
-            LOGGER.log(Level.SEVERE, "Failed to migrate guest data", e);
+            LOGGER.log(Level.SEVERE, "Failed to migrate recently viewed", e);
         }
     }
 
@@ -313,15 +376,9 @@ public class BaitDesireApp extends Application {
 
     // ==================== ОБЩИЕ НАСТРОЙКИ ====================
     private void setupCatalogComponents() {
-        if (cachedCategories == null) {
-            cachedCategories = categoryDAO.getAllCategories();
-        }
-        if (cachedContacts == null) {
-            cachedContacts = contactDAO.getAllActiveContacts();
-        }
-        if (searchTags == null) {
-            searchTags = tagDAO.getAllActiveTags();
-        }
+        if (cachedCategories == null) cachedCategories = categoryDAO.getAllCategories();
+        if (cachedContacts == null) cachedContacts = contactDAO.getAllActiveContacts();
+        if (searchTags == null) searchTags = tagDAO.getAllActiveTags();
 
         List<Product> products = loadProductsFromDatabase();
         ObservableList<Product> allProducts = FXCollections.observableArrayList(products);
@@ -353,9 +410,7 @@ public class BaitDesireApp extends Application {
         productsContainer.setAlignment(Pos.TOP_CENTER);
         productsContainer.setStyle(STYLE_BG_TRANSPARENT);
 
-        if (recentlyViewedSection != null) {
-            productsContainer.getChildren().add(recentlyViewedSection);
-        }
+        if (recentlyViewedSection != null) productsContainer.getChildren().add(recentlyViewedSection);
         productsContainer.getChildren().add(productsGrid);
         contentContainer.getChildren().add(productsContainer);
         HBox.setHgrow(productsContainer, Priority.ALWAYS);
@@ -388,6 +443,8 @@ public class BaitDesireApp extends Application {
         recentlyViewedSection = new VBox();
         recentlyViewedSection.setVisible(false);
 
+        loadGuestRecentlyViewed();
+
         updateProductsGrid();
 
         VBox catalogContent = createCatalogContent(header);
@@ -396,6 +453,7 @@ public class BaitDesireApp extends Application {
         rootPane.getChildren().add(catalogLayout);
 
         updateMainMenuBarStyle();
+        updateCartCount();
     }
 
     private VBox createGuestHeader() {
@@ -413,15 +471,38 @@ public class BaitDesireApp extends Application {
         HBox headerTop = new HBox();
         headerTop.setAlignment(Pos.CENTER_RIGHT);
         headerTop.setSpacing(15);
+
         Button loginButton = new Button("Войти");
         updateButtonStyle(loginButton);
         loginButton.setOnAction(e -> showLoginView());
+
         Button registerButton = new Button(LABEL_REGISTRATION);
         updateButtonStyle(registerButton);
         registerButton.setOnAction(e -> showRegisterView());
-        headerTop.getChildren().addAll(loginButton, registerButton);
 
-        HBox searchBox = createGuestSearchBox();
+        Button cartButton = new Button("Корзина");
+        updateButtonStyle(cartButton);
+        cartCountLabel = new Label();
+        cartCountLabel.setStyle("-fx-background-color: " + getCurrentAccent() + ";" +
+                "-fx-text-fill: white;" +
+                "-fx-font-size: 11px; -fx-font-weight: bold;" +
+                "-fx-padding: 2 5;" +
+                "-fx-background-radius: 10;" +
+                "-fx-min-width: 18; -fx-min-height: 18;" +
+                "-fx-alignment: center;");
+        cartCountLabel.setVisible(false);
+        StackPane cartStack = new StackPane(cartButton, cartCountLabel);
+        StackPane.setAlignment(cartCountLabel, Pos.TOP_RIGHT);
+        cartCountLabel.setTranslateX(-5);
+        cartCountLabel.setTranslateY(-5);
+        cartButton.setOnAction(e -> {
+            CartView cartView = new CartView(null, null, null, this::updateCartCount, this);
+            cartView.show(primaryStage);
+        });
+
+        headerTop.getChildren().addAll(loginButton, registerButton, cartStack);
+
+        HBox searchBox = createSearchBoxCommon();
         HBox tagsBox = createTagsPanel();
 
         Label welcomeLabel = new Label("Добро пожаловать в BAIT & DESIRE!");
@@ -439,8 +520,39 @@ public class BaitDesireApp extends Application {
         return headerBox;
     }
 
-    private HBox createGuestSearchBox() {
-        return createSearchBoxCommon();
+    private void loadGuestRecentlyViewed() {
+        if (recentlyViewedProducts == null) recentlyViewedProducts = FXCollections.observableArrayList();
+        recentlyViewedProducts.clear();
+        String sql = "SELECT p.product_id, p.product_name, p.price_per_kg, p.rating, p.description, " +
+                "p.quantity_in_stock, p.image_url, p.category_id, c.category_name " +
+                "FROM guest_recently_viewed grv " +
+                "JOIN products p ON grv.product_id = p.product_id " +
+                "LEFT JOIN categories c ON p.category_id = c.category_id " +
+                "WHERE grv.guest_id = ? " +
+                "ORDER BY grv.viewed_at DESC LIMIT 8";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, guestId);
+            ResultSet rs = pstmt.executeQuery();
+            while (rs.next()) {
+                Product product = new Product(
+                        rs.getInt("product_id"),
+                        rs.getString("product_name"),
+                        rs.getDouble("price_per_kg"),
+                        rs.getDouble("rating"),
+                        rs.getString("description"),
+                        rs.getInt("quantity_in_stock"),
+                        rs.getString("image_url"),
+                        rs.getInt("category_id"),
+                        rs.getString("category_name"),
+                        0.0
+                );
+                recentlyViewedProducts.add(product);
+            }
+            refreshRecentlyViewedSection();
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "Failed to load guest recently viewed", e);
+        }
     }
 
     // ==================== АВТОРИЗОВАННЫЙ ПОЛЬЗОВАТЕЛЬ ====================
@@ -506,7 +618,6 @@ public class BaitDesireApp extends Application {
         Button cartButton = new Button("Корзина");
         updateButtonStyle(cartButton);
 
-        // ============= ДЛЯ КРУЖКА =============
         cartCountLabel = new Label();
         cartCountLabel.setStyle("-fx-background-color: " + getCurrentAccent() + ";" +
                 "-fx-text-fill: white;" +
@@ -527,7 +638,6 @@ public class BaitDesireApp extends Application {
             CartView cartView = new CartView(user, address, paymentInfo, this::updateCartCount, this);
             cartView.show(primaryStage);
         });
-        // =====================================================
         updateCartCount();
 
         Button logoutButton = new Button("Выйти");
@@ -556,7 +666,7 @@ public class BaitDesireApp extends Application {
             headerTop.getChildren().addAll(profileButton, cartStack, logoutButton);
         }
 
-        HBox searchBox = createSearchBox();
+        HBox searchBox = createSearchBoxCommon();
         HBox tagsBox = createTagsPanel();
 
         Label welcomeLabel = new Label("Добро пожаловать, " + user.getUsername() + "!");
@@ -583,10 +693,6 @@ public class BaitDesireApp extends Application {
 
         headerBox.getChildren().addAll(titleBox, headerTop, searchBox, tagsBox, welcomeLabel, addressLabel, cardLabel, catalogTitle);
         return headerBox;
-    }
-
-    private HBox createSearchBox() {
-        return createSearchBoxCommon();
     }
 
     private HBox createSearchBoxCommon() {
@@ -797,9 +903,9 @@ public class BaitDesireApp extends Application {
         Button addButton = new Button("В корзину");
         addButton.setPrefWidth(200);
 
-        if (isGuest || product.getStockQuantity() <= 0) {
+        if (product.getStockQuantity() <= 0) {
             addButton.setDisable(true);
-            addButton.setText(isGuest ? "Войдите, чтобы купить" : "Нет в наличии");
+            addButton.setText("Нет в наличии");
             addButton.setStyle("-fx-background-color: #cccccc; -fx-text-fill: #999999; -fx-font-size: 13px; -fx-font-weight: bold; -fx-padding: 8; -fx-background-radius: 8;");
         } else {
             updateButtonStyle(addButton);
@@ -819,20 +925,35 @@ public class BaitDesireApp extends Application {
     }
 
     private void addToCart(Product product, double kg) {
-        int effectiveUserId = getEffectiveUserId();
         int quantityUnits = (int) Math.ceil(kg);
-        if (effectiveUserId > 0) {
-            cartDAO.addToCart(effectiveUserId, product.getId(), quantityUnits);
+        if (isUserLoggedIn()) {
+            cartDAO.addToCart(currentUser.getUserId(), product.getId(), quantityUnits);
         } else {
-            String guestIdStr = String.valueOf(-effectiveUserId);
-            String sql = "INSERT INTO guest_cart_items (guest_id, product_id, quantity) VALUES (?, ?, ?) " +
-                    "ON CONFLICT (guest_id, product_id) DO UPDATE SET quantity = guest_cart_items.quantity + EXCLUDED.quantity";
+            // Гость: проверка существования и обновление/вставка без ON CONFLICT
+            String checkSql = "SELECT quantity FROM guest_cart_items WHERE guest_id = ? AND product_id = ?";
             try (Connection conn = DatabaseConnection.getConnection();
-                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                pstmt.setString(1, guestIdStr);
-                pstmt.setInt(2, product.getId());
-                pstmt.setInt(3, quantityUnits);
-                pstmt.executeUpdate();
+                 PreparedStatement checkStmt = conn.prepareStatement(checkSql)) {
+                checkStmt.setString(1, guestId);
+                checkStmt.setInt(2, product.getId());
+                ResultSet rs = checkStmt.executeQuery();
+                if (rs.next()) {
+                    int existingQty = rs.getInt("quantity");
+                    String updateSql = "UPDATE guest_cart_items SET quantity = ? WHERE guest_id = ? AND product_id = ?";
+                    try (PreparedStatement updateStmt = conn.prepareStatement(updateSql)) {
+                        updateStmt.setInt(1, existingQty + quantityUnits);
+                        updateStmt.setString(2, guestId);
+                        updateStmt.setInt(3, product.getId());
+                        updateStmt.executeUpdate();
+                    }
+                } else {
+                    String insertSql = "INSERT INTO guest_cart_items (guest_id, product_id, quantity) VALUES (?, ?, ?)";
+                    try (PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
+                        insertStmt.setString(1, guestId);
+                        insertStmt.setInt(2, product.getId());
+                        insertStmt.setInt(3, quantityUnits);
+                        insertStmt.executeUpdate();
+                    }
+                }
             } catch (SQLException e) {
                 LOGGER.log(Level.SEVERE, "Failed to add to guest cart", e);
             }
@@ -855,26 +976,27 @@ public class BaitDesireApp extends Application {
     private void addToRecentlyViewed(Product product) {
         if (product == null) return;
         Platform.runLater(() -> {
-            int effectiveUserId = getEffectiveUserId();
-            if (effectiveUserId > 0) {
-                recentlyViewedDAO.addRecentlyViewed(effectiveUserId, product.getId());
+            if (isUserLoggedIn()) {
+                recentlyViewedDAO.addRecentlyViewed(currentUser.getUserId(), product.getId());
+                List<Product> products = recentlyViewedDAO.getRecentlyViewed(currentUser.getUserId(), 8);
+                recentlyViewedProducts.clear();
+                recentlyViewedProducts.addAll(products);
             } else {
-                String guestIdStr = String.valueOf(-effectiveUserId);
                 String sql = "INSERT INTO guest_recently_viewed (guest_id, product_id) VALUES (?, ?) " +
                         "ON CONFLICT (guest_id, product_id) DO UPDATE SET viewed_at = CURRENT_TIMESTAMP";
                 try (Connection conn = DatabaseConnection.getConnection();
                      PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                    pstmt.setString(1, guestIdStr);
+                    pstmt.setString(1, guestId);
                     pstmt.setInt(2, product.getId());
                     pstmt.executeUpdate();
                 } catch (SQLException e) {
                     LOGGER.log(Level.SEVERE, "Failed to add guest recently viewed", e);
                 }
-            }
-            recentlyViewedProducts.removeIf(p -> p.getId() == product.getId());
-            recentlyViewedProducts.add(0, product);
-            if (recentlyViewedProducts.size() > 8) {
-                recentlyViewedProducts.remove(8, recentlyViewedProducts.size());
+                recentlyViewedProducts.removeIf(p -> p.getId() == product.getId());
+                recentlyViewedProducts.add(0, product);
+                if (recentlyViewedProducts.size() > 8) {
+                    recentlyViewedProducts.remove(8, recentlyViewedProducts.size());
+                }
             }
             refreshRecentlyViewedSection();
         });
@@ -984,14 +1106,29 @@ public class BaitDesireApp extends Application {
 
         Button removeButton = new Button("✕");
         removeButton.setStyle("-fx-background-color: rgba(0,0,0,0.5); -fx-text-fill: white; -fx-font-size: 10px; -fx-cursor: hand; -fx-padding: 2 5; -fx-background-radius: 10; -fx-font-weight: bold;");
-        removeButton.setOnAction(e -> {
-            if (isUserLoggedIn()) {
+        if (isUserLoggedIn()) {
+            removeButton.setOnAction(e -> {
                 recentlyViewedDAO.removeFromRecentlyViewed(currentUser.getUserId(), product.getId());
                 recentlyViewedProducts.remove(product);
                 refreshRecentlyViewedSection();
-            }
-            e.consume();
-        });
+                e.consume();
+            });
+        } else {
+            removeButton.setOnAction(e -> {
+                String sql = "DELETE FROM guest_recently_viewed WHERE guest_id = ? AND product_id = ?";
+                try (Connection conn = DatabaseConnection.getConnection();
+                     PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                    pstmt.setString(1, guestId);
+                    pstmt.setInt(2, product.getId());
+                    pstmt.executeUpdate();
+                    recentlyViewedProducts.remove(product);
+                    refreshRecentlyViewedSection();
+                } catch (SQLException ex) {
+                    LOGGER.log(Level.SEVERE, "Failed to remove guest recently viewed", ex);
+                }
+                e.consume();
+            });
+        }
 
         StackPane imageContainer = new StackPane();
         imageContainer.setPrefWidth(130);
@@ -1039,7 +1176,8 @@ public class BaitDesireApp extends Application {
 
     // ==================== ОСТАЛЬНЫЕ МЕТОДЫ ====================
     private void updateCartCount() {
-        if (isUserLoggedIn() && cartCountLabel != null) {
+        if (cartCountLabel == null) return;
+        if (isUserLoggedIn()) {
             int count = cartDAO.getCartItemCount(currentUser.getUserId());
             Platform.runLater(() -> {
                 if (count > 0) {
@@ -1049,6 +1187,24 @@ public class BaitDesireApp extends Application {
                     cartCountLabel.setVisible(false);
                 }
             });
+        } else {
+            String sql = "SELECT SUM(quantity) FROM guest_cart_items WHERE guest_id = ?";
+            try (Connection conn = DatabaseConnection.getConnection();
+                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, guestId);
+                ResultSet rs = pstmt.executeQuery();
+                int count = rs.next() ? rs.getInt(1) : 0;
+                Platform.runLater(() -> {
+                    if (count > 0) {
+                        cartCountLabel.setText(String.valueOf(count));
+                        cartCountLabel.setVisible(true);
+                    } else {
+                        cartCountLabel.setVisible(false);
+                    }
+                });
+            } catch (SQLException e) {
+                LOGGER.log(Level.SEVERE, "Failed to get guest cart count", e);
+            }
         }
     }
 
@@ -1063,6 +1219,10 @@ public class BaitDesireApp extends Application {
     }
 
     private void showProfileView() {
+        if (!isUserLoggedIn()) {
+            showCustomLoginPrompt("Для просмотра профиля необходимо войти.");
+            return;
+        }
         ProfileView profileView = new ProfileView(currentUser, paymentDAO, () -> {
             if (currentUser != null) showCatalogView(currentUser);
             else showGuestCatalogView();
@@ -1132,9 +1292,7 @@ public class BaitDesireApp extends Application {
 
         MenuItem windowModeItem = new MenuItem("Оконный режим");
         windowModeItem.getStyleClass().add(STYLE_MENU_ITEM);
-        windowModeItem.setOnAction(e -> {
-            if (isFullScreen) toggleFullScreen();
-        });
+        windowModeItem.setOnAction(e -> { if (isFullScreen) toggleFullScreen(); });
 
         MenuItem increaseSizeItem = new MenuItem("Увеличить размер окна");
         increaseSizeItem.getStyleClass().add(STYLE_MENU_ITEM);
@@ -1374,9 +1532,7 @@ public class BaitDesireApp extends Application {
                     }
                     stream.close();
                 }
-            } catch (Exception ignored) {
-                // Ignored
-            }
+            } catch (Exception ignored) {}
         }
         Canvas canvas = new Canvas(W, H);
         GraphicsContext gc = canvas.getGraphicsContext2D();
@@ -1412,6 +1568,14 @@ public class BaitDesireApp extends Application {
     public boolean isDarkTheme() { return isDarkTheme; }
 
     public Stage getPrimaryStage() { return primaryStage; }
+
+    public void addProductToCart(Product product, double kg) {
+        addToCart(product, kg);
+    }
+
+    public void updateCartCountPublic() {
+        updateCartCount();
+    }
 
     public static void main(String[] args) { launch(args); }
 }
