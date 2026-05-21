@@ -1,7 +1,9 @@
 package com.kurcashi.views.admin;
 
 import com.kurcashi.dao.AdminDAO;
+import com.kurcashi.dao.TagDAO;
 import com.kurcashi.models.Admin;
+import com.kurcashi.models.Tag;
 import com.kurcashi.models.User;
 import com.kurcashi.models.Product;
 import com.kurcashi.models.Category;
@@ -61,24 +63,35 @@ public class AdminDashboardView {
     private static final String UPDATE_BUTTON_TEXT = "Обновить";
     private static final String IMAGES_DIR_PATH = "src/main/resources/images/";
     private static final String CONFIRM_DELETE_TITLE = "Подтверждение удаления";
+    private static final String BUTTON_EDIT_TEXT = "Ред.";
+    private static final String BUTTON_DELETE_TEXT = "Удал.";
+    private static final String LABEL_NAME = "Название:";
+    private static final String LABEL_DESCRIPTION = "Описание:";
+    private static final String LABEL_PRICE = "Цена (₽/кг):";
+    private static final String LABEL_STOCK = "Количество (кг):";
+    private static final String LABEL_IMAGE = "Изображение:";
+    private static final String LABEL_CATEGORY = "Категория:";
+    private static final String LABEL_ORDER = "Порядок:";
 
     private final Admin admin;
     private final BaitDesireApp app;
     private final AdminDAO adminDAO;
+    private final TagDAO tagDAO;
     private BorderPane view;
 
-    // Сетки для карточек
     private GridPane usersGrid;
     private GridPane productsGrid;
     private GridPane ordersGrid;
     private GridPane categoriesGrid;
     private GridPane usersForRolesGrid;
     private GridPane logsGrid;
+    private GridPane tagsGrid;
 
     public AdminDashboardView(Admin admin, BaitDesireApp app) {
         this.admin = admin;
         this.app = app;
         this.adminDAO = new AdminDAO();
+        this.tagDAO = new TagDAO();
         createView();
     }
 
@@ -121,7 +134,11 @@ public class AdminDashboardView {
         logsTab.setContent(createLogsTab());
         customizeTab(logsTab);
 
-        tabPane.getTabs().addAll(statsTab, usersTab, productsTab, categoriesTab, ordersTab, assignRolesTab, logsTab);
+        Tab tagsTab = new Tab("Теги");
+        tagsTab.setContent(createTagsTab());
+        customizeTab(tagsTab);
+
+        tabPane.getTabs().addAll(statsTab, usersTab, productsTab, categoriesTab, ordersTab, assignRolesTab, logsTab, tagsTab);
 
         tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
             updateTabStyle(tabPane);
@@ -131,6 +148,7 @@ public class AdminDashboardView {
             else if (newTab == ordersTab && ordersGrid.getChildren().isEmpty()) refreshOrdersGrid();
             else if (newTab == assignRolesTab && usersForRolesGrid.getChildren().isEmpty()) refreshUsersForRolesGrid();
             else if (newTab == logsTab && logsGrid.getChildren().isEmpty()) refreshLogsGrid();
+            else if (newTab == tagsTab && tagsGrid.getChildren().isEmpty()) refreshTagsGrid();
         });
 
         view.setCenter(tabPane);
@@ -193,11 +211,7 @@ public class AdminDashboardView {
             }
             com.kurcashi.dao.UserDAO userDAO = new com.kurcashi.dao.UserDAO();
             User existingUser = userDAO.getUserById(tempUser.getUserId());
-            if (existingUser != null) {
-                app.showCatalogView(existingUser);
-            } else {
-                app.showCatalogView(tempUser);
-            }
+            app.showCatalogView(existingUser != null ? existingUser : tempUser);
         });
 
         header.getChildren().addAll(titleLabel, spacer, adminLabel, backToUserButton, logoutButton);
@@ -251,90 +265,47 @@ public class AdminDashboardView {
         container.setPadding(new Insets(20));
         container.setStyle(STYLE_BG_CARD + app.getCurrentBgLight() + ";");
 
-        HBox toolbar = new HBox(10);
-        toolbar.setAlignment(Pos.CENTER_RIGHT);
-        Button refreshButton = new Button(UPDATE_BUTTON_TEXT);
-        app.updateButtonStyle(refreshButton);
-        refreshButton.setOnAction(e -> refreshUsersGrid());
-        toolbar.getChildren().add(refreshButton);
-
+        HBox toolbar = createRefreshToolbar(this::refreshUsersGrid);
         usersGrid = new GridPane();
-        usersGrid.setPadding(new Insets(10));
-        usersGrid.setHgap(20);
-        usersGrid.setVgap(20);
-        usersGrid.setAlignment(Pos.TOP_CENTER);
-        usersGrid.setStyle(STYLE_BG_TRANSPARENT);
+        configureGridPane(usersGrid);
 
-        ScrollPane scrollPane = new ScrollPane(usersGrid);
-        scrollPane.setFitToWidth(true);
-        scrollPane.setStyle(STYLE_BG_TRANSPARENT_BOTH);
-        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-
+        ScrollPane scrollPane = createScrollPane(usersGrid);
         container.getChildren().addAll(toolbar, scrollPane);
         return container;
     }
 
     private void refreshUsersGrid() {
-        usersGrid.getChildren().clear();
-        List<User> users = adminDAO.getAllUsers();
-        int col = 0;
-        int row = 0;
-        final int maxCols = 4;
-        for (User user : users) {
-            VBox card = createUserCard(user);
-            usersGrid.add(card, col, row);
-            col++;
-            if (col == maxCols) {
-                col = 0;
-                row++;
-            }
-        }
-        if (users.isEmpty()) {
-            Label emptyLabel = new Label("Нет пользователей");
-            emptyLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_18);
-            usersGrid.add(emptyLabel, 0, 0);
-        }
+        clearAndFillGrid(usersGrid, adminDAO.getAllUsers(), this::createUserCard);
     }
 
     private VBox createUserCard(User user) {
-        VBox card = new VBox(10);
-        card.setPadding(new Insets(15));
-        card.setPrefWidth(260);
-        card.setStyle(STYLE_BG_CARD + app.getCurrentBgCard() + STYLE_BG_RADIUS_12 +
-                STYLE_EFFECT_SHADOW +
-                STYLE_BORDER + app.getCurrentBorderColor() + STYLE_BORDER_RADIUS_12);
+        VBox card = createBaseCard(260);
+        Label nameLabel = createLabel(user.getUsername(), STYLE_FONT_SIZE_16_BOLD, app.getCurrentTextPrimary());
+        Label emailLabel = createLabel("📧 " + user.getEmail(), STYLE_FONT_SIZE_12, app.getCurrentTextSecondary());
+        Label phoneLabel = createLabel("📱 " + Objects.requireNonNullElse(user.getPhone(), NOT_SPECIFIED), STYLE_FONT_SIZE_12, app.getCurrentTextSecondary());
+        Label bonusLabel = createBoldLabel("🎁 Бонусы: " + user.getBonusPoints(), "13px", app.getCurrentAccentDark());
+        Label adminLabel = createLabel(user.isAdmin() ? "👑 Администратор" : "👤 Пользователь", STYLE_FONT_SIZE_12,
+                user.isAdmin() ? app.getCurrentSuccess() : app.getCurrentTextSecondary());
 
-        Label nameLabel = new Label(user.getUsername());
-        nameLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextPrimary() + STYLE_FONT_SIZE_16_BOLD);
-        Label emailLabel = new Label("📧 " + user.getEmail());
-        emailLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_12);
-        Label phoneLabel = new Label("📱 " + Objects.requireNonNullElse(user.getPhone(), NOT_SPECIFIED));
-        phoneLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_12);
-        Label bonusLabel = new Label("🎁 Бонусы: " + user.getBonusPoints());
-        bonusLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentAccentDark() + "; -fx-font-size: 13px; -fx-font-weight: bold;");
-        Label adminLabel = new Label(user.isAdmin() ? "👑 Администратор" : "👤 Пользователь");
-        adminLabel.setStyle(STYLE_TEXT_FILL + (user.isAdmin() ? app.getCurrentSuccess() : app.getCurrentTextSecondary()) + STYLE_FONT_SIZE_12);
-
-        HBox buttonsBox = new HBox(8);
-        buttonsBox.setAlignment(Pos.CENTER);
-        Button deleteButton = new Button("Удалить");
-        deleteButton.setStyle("-fx-background-color: " + app.getCurrentError() + STYLE_TEXT_FILL_WHITE + STYLE_FONT_SIZE_12 + STYLE_PADDING_5_10 + STYLE_BG_RADIUS_6 + STYLE_CURSOR_HAND);
-        deleteButton.setOnAction(e -> deleteUser(user));
-        Button bonusButton = new Button("Бонусы");
-        bonusButton.setStyle("-fx-background-color: " + app.getCurrentAccent() + STYLE_TEXT_FILL_WHITE + STYLE_FONT_SIZE_12 + STYLE_PADDING_5_10 + STYLE_BG_RADIUS_6 + STYLE_CURSOR_HAND);
-        bonusButton.setOnAction(e -> showBonusDialog(user));
-        buttonsBox.getChildren().addAll(bonusButton, deleteButton);
-
+        HBox buttonsBox = createUserActionButtons(user);
         card.getChildren().addAll(nameLabel, emailLabel, phoneLabel, bonusLabel, adminLabel, buttonsBox);
         return card;
     }
 
+    private HBox createUserActionButtons(User user) {
+        HBox buttonsBox = new HBox(8);
+        buttonsBox.setAlignment(Pos.CENTER);
+        Button deleteButton = createColoredButton("Удалить", app.getCurrentError());
+        deleteButton.setOnAction(e -> deleteUser(user));
+        Button bonusButton = createColoredButton("Бонусы", app.getCurrentAccent());
+        bonusButton.setOnAction(e -> showBonusDialog(user));
+        buttonsBox.getChildren().addAll(bonusButton, deleteButton);
+        return buttonsBox;
+    }
+
     private void deleteUser(User user) {
-        boolean confirmed = showCustomConfirm(CONFIRM_DELETE_TITLE, "Удалить пользователя " + user.getUsername() + "?");
-        if (confirmed) {
-            boolean success = adminDAO.deleteUser(user.getUserId(), admin.getAdminId());
-            if (success) {
+        if (showCustomConfirm("Удалить пользователя " + user.getUsername() + "?")) {
+            if (adminDAO.deleteUser(user.getUserId(), admin.getAdminId())) {
                 refreshUsersGrid();
                 refreshUsersForRolesGrid();
                 showInfo("Пользователь удалён");
@@ -357,6 +328,30 @@ public class AdminDashboardView {
         infoLabel.setWrapText(true);
         infoLabel.setAlignment(Pos.CENTER);
 
+        HBox inputBox = createBonusInputBox();
+        HBox buttonBox = createButtonBoxForDialog(() -> {
+            TextField bonusField = (TextField) inputBox.getChildren().get(1);
+            int newBonus = Integer.parseInt(bonusField.getText().trim());
+            if (newBonus >= 0) {
+                if (adminDAO.updateUserBonusPoints(user.getUserId(), newBonus, admin.getAdminId())) {
+                    refreshUsersGrid();
+                    refreshUsersForRolesGrid();
+                    dialogStage.close();
+                    showInfo("Бонусы обновлены");
+                } else {
+                    showError("Ошибка обновления бонусов");
+                }
+            } else {
+                showError("Бонусы не могут быть отрицательными");
+            }
+        }, dialogStage::close);
+
+        dialogBox.getChildren().addAll(titleLabel, infoLabel, inputBox, buttonBox);
+        finishDialog(dialogStage, dialogBox);
+        dialogStage.showAndWait();
+    }
+
+    private HBox createBonusInputBox() {
         HBox inputBox = new HBox(10);
         inputBox.setAlignment(Pos.CENTER);
         Label bonusLabel = new Label("Новое значение:");
@@ -366,31 +361,7 @@ public class AdminDashboardView {
         bonusField.setPrefWidth(150);
         app.updateTextFieldStyle(bonusField);
         inputBox.getChildren().addAll(bonusLabel, bonusField);
-
-        HBox buttonBox = createButtonBoxForDialog(() -> {
-            try {
-                int newBonus = Integer.parseInt(bonusField.getText().trim());
-                if (newBonus >= 0) {
-                    boolean success = adminDAO.updateUserBonusPoints(user.getUserId(), newBonus, admin.getAdminId());
-                    if (success) {
-                        refreshUsersGrid();
-                        refreshUsersForRolesGrid();
-                        dialogStage.close();
-                        showInfo("Бонусы обновлены");
-                    } else {
-                        showError("Ошибка обновления бонусов");
-                    }
-                } else {
-                    showError("Бонусы не могут быть отрицательными");
-                }
-            } catch (NumberFormatException ex) {
-                showError("Введите корректное число");
-            }
-        }, dialogStage::close);
-
-        dialogBox.getChildren().addAll(titleLabel, infoLabel, inputBox, buttonBox);
-        finishDialog(dialogStage, dialogBox);
-        dialogStage.showAndWait();
+        return inputBox;
     }
 
     // ==================== ТОВАРЫ ====================
@@ -410,69 +381,30 @@ public class AdminDashboardView {
         toolbar.getChildren().addAll(addButton, refreshButton);
 
         productsGrid = new GridPane();
-        productsGrid.setPadding(new Insets(10));
-        productsGrid.setHgap(20);
-        productsGrid.setVgap(20);
-        productsGrid.setAlignment(Pos.TOP_CENTER);
-        productsGrid.setStyle(STYLE_BG_TRANSPARENT);
-
-        ScrollPane scrollPane = new ScrollPane(productsGrid);
-        scrollPane.setFitToWidth(true);
-        scrollPane.setStyle(STYLE_BG_TRANSPARENT_BOTH);
-        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-
+        configureGridPane(productsGrid);
+        ScrollPane scrollPane = createScrollPane(productsGrid);
         container.getChildren().addAll(toolbar, scrollPane);
         return container;
     }
 
     private void refreshProductsGrid() {
-        productsGrid.getChildren().clear();
-        List<Product> products = adminDAO.getAllProducts();
-        int col = 0;
-        int row = 0;
-        final int maxCols = 4;
-        for (Product product : products) {
-            VBox card = createProductCard(product);
-            productsGrid.add(card, col, row);
-            col++;
-            if (col == maxCols) {
-                col = 0;
-                row++;
-            }
-        }
-        if (products.isEmpty()) {
-            Label emptyLabel = new Label("Нет товаров");
-            emptyLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_18);
-            productsGrid.add(emptyLabel, 0, 0);
-        }
+        clearAndFillGrid(productsGrid, adminDAO.getAllProducts(), this::createProductCard);
     }
 
     private VBox createProductCard(Product product) {
-        VBox card = new VBox(10);
-        card.setPadding(new Insets(15));
-        card.setPrefWidth(260);
-        card.setStyle(STYLE_BG_CARD + app.getCurrentBgCard() + STYLE_BG_RADIUS_12 +
-                STYLE_EFFECT_SHADOW +
-                STYLE_BORDER + app.getCurrentBorderColor() + STYLE_BORDER_RADIUS_12);
-
-        Label nameLabel = new Label(product.getName());
-        nameLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextPrimary() + STYLE_FONT_SIZE_16_BOLD);
+        VBox card = createBaseCard(260);
+        Label nameLabel = createLabel(product.getName(), STYLE_FONT_SIZE_16_BOLD, app.getCurrentTextPrimary());
         nameLabel.setWrapText(true);
-        Label priceLabel = new Label(String.format("💰 %.2f ₽/кг", product.getPrice()));
-        priceLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentAccentDark() + STYLE_FONT_SIZE_14_BOLD);
-        Label stockLabel = new Label("📦 В наличии: " + product.getStockQuantity() + " кг");
-        stockLabel.setStyle(STYLE_TEXT_FILL + (product.getStockQuantity() > 0 ? app.getCurrentSuccess() : app.getCurrentError()) + STYLE_FONT_SIZE_12);
-        Label ratingLabel = new Label("⭐ Рейтинг: " + String.format("%.1f", product.getRating()));
-        ratingLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_12);
+        Label priceLabel = createLabel(String.format("💰 %.2f ₽/кг", product.getPrice()), STYLE_FONT_SIZE_14_BOLD, app.getCurrentAccentDark());
+        Label stockLabel = createLabel("📦 В наличии: " + product.getStockQuantity() + " кг", STYLE_FONT_SIZE_12,
+                product.getStockQuantity() > 0 ? app.getCurrentSuccess() : app.getCurrentError());
+        Label ratingLabel = createLabel("⭐ Рейтинг: " + String.format("%.1f", product.getRating()), STYLE_FONT_SIZE_12, app.getCurrentTextSecondary());
 
         HBox buttonsBox = new HBox(8);
         buttonsBox.setAlignment(Pos.CENTER);
-        Button editButton = new Button("Ред.");
-        editButton.setStyle("-fx-background-color: " + app.getCurrentAccent() + STYLE_TEXT_FILL_WHITE + STYLE_FONT_SIZE_12 + STYLE_PADDING_5_10 + STYLE_BG_RADIUS_6 + STYLE_CURSOR_HAND);
+        Button editButton = createColoredButton(BUTTON_EDIT_TEXT, app.getCurrentAccent());
         editButton.setOnAction(e -> showProductDialog(product));
-        Button deleteButton = new Button("Удал.");
-        deleteButton.setStyle("-fx-background-color: " + app.getCurrentError() + STYLE_TEXT_FILL_WHITE + STYLE_FONT_SIZE_12 + STYLE_PADDING_5_10 + STYLE_BG_RADIUS_6 + STYLE_CURSOR_HAND);
+        Button deleteButton = createColoredButton(BUTTON_DELETE_TEXT, app.getCurrentError());
         deleteButton.setOnAction(e -> deleteProduct(product));
         buttonsBox.getChildren().addAll(editButton, deleteButton);
 
@@ -480,98 +412,12 @@ public class AdminDashboardView {
         return card;
     }
 
-    // Вспомогательные методы для снижения сложности showProductDialog
-    private GridPane createProductFormGrid(ComboBox<Category> categoryCombo,
-                                           TextField nameField, TextField priceField, TextField stockField,
-                                           TextArea descArea, HBox imageBox) {
-        GridPane grid = new GridPane();
-        grid.setHgap(15);
-        grid.setVgap(12);
-        grid.setPadding(new Insets(10, 0, 10, 0));
-
-        // Настройка колонок: первая - фиксированная ширина для меток, вторая - растягивается
-        ColumnConstraints col1 = new ColumnConstraints();
-        col1.setMinWidth(100);
-        col1.setPrefWidth(100);
-        col1.setMaxWidth(120);
-        ColumnConstraints col2 = new ColumnConstraints();
-        col2.setHgrow(Priority.ALWAYS);
-        col2.setFillWidth(true);
-        grid.getColumnConstraints().addAll(col1, col2);
-
-        grid.add(createBoldLabel("Название:"), 0, 0);
-        grid.add(nameField, 1, 0);
-        grid.add(createBoldLabel("Цена (₽/кг):"), 0, 1);
-        grid.add(priceField, 1, 1);
-        grid.add(createBoldLabel("Количество (кг):"), 0, 2);
-        grid.add(stockField, 1, 2);
-        grid.add(createBoldLabel("Описание:"), 0, 3);
-        grid.add(descArea, 1, 3);
-        grid.add(createBoldLabel("Изображение:"), 0, 4);
-        grid.add(imageBox, 1, 4);
-        grid.add(createBoldLabel("Категория:"), 0, 5);
-        grid.add(categoryCombo, 1, 5);
-
-        return grid;
-    }
-
-    private Label createBoldLabel(String text) {
-        Label label = new Label(text);
-        label.setStyle(STYLE_TEXT_FILL + app.getCurrentTextPrimary() + STYLE_FONT_WEIGHT_BOLD);
-        label.setWrapText(false);
-        label.setAlignment(Pos.CENTER_RIGHT);
-        return label;
-    }
-
-    private HBox createImageUploadBox(TextField imageField, Stage ownerStage) {
-        Button chooseImageButton = new Button("Выбрать изображение");
-        chooseImageButton.setStyle("-fx-background-color: " + app.getCurrentAccent() + STYLE_TEXT_FILL_WHITE + STYLE_FONT_SIZE_12 + STYLE_PADDING_5_10 + STYLE_BG_RADIUS_6 + STYLE_CURSOR_HAND);
-        chooseImageButton.setOnAction(e -> {
-            FileChooser fileChooser = new FileChooser();
-            fileChooser.setTitle("Выберите изображение товара");
-            fileChooser.getExtensionFilters().addAll(
-                    new FileChooser.ExtensionFilter("Изображения", "*.png", "*.jpg", "*.jpeg", "*.gif", "*.PNG", "*.JPG", "*.JPEG", "*.GIF")
-            );
-            File selectedFile = fileChooser.showOpenDialog(ownerStage);
-            if (selectedFile != null) {
-                String ext = "";
-                String fileName = selectedFile.getName();
-                int dotIndex = fileName.lastIndexOf('.');
-                if (dotIndex > 0) {
-                    ext = fileName.substring(dotIndex);
-                }
-                String uniqueName = "product_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 8) + ext;
-                File destDir = new File(IMAGES_DIR_PATH);
-                if (!destDir.exists() && !destDir.mkdirs()) {
-                    showError("Не удалось создать папку для изображений");
-                    return;
-                }
-                File destFile = new File(destDir, uniqueName);
-                try {
-                    Files.copy(selectedFile.toPath(), destFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                    imageField.setText(uniqueName);
-                    showInfo("Изображение загружено: " + uniqueName);
-                } catch (IOException ex) {
-                    showError("Ошибка копирования файла: " + ex.getMessage());
-                }
-            }
-        });
-        imageField.setPrefWidth(250);
-        HBox imageBox = new HBox(10, imageField, chooseImageButton);
-        imageBox.setAlignment(Pos.CENTER_LEFT);
-        return imageBox;
-    }
-
     private void showProductDialog(Product product) {
         boolean isNew = (product == null);
-        final Product finalProduct;
+        final Product finalProduct = (isNew) ? new Product() : product;
         if (isNew) {
-            Product newProduct = new Product();
-            newProduct.setRating(0.0);
-            newProduct.setStockQuantity(0);
-            finalProduct = newProduct;
-        } else {
-            finalProduct = product;
+            finalProduct.setRating(0.0);
+            finalProduct.setStockQuantity(0);
         }
 
         Stage dialogStage = createDialogStage();
@@ -591,23 +437,9 @@ public class AdminDashboardView {
         imageField.setPromptText("Имя файла изображения или путь");
 
         HBox imageBox = createImageUploadBox(imageField, dialogStage);
-
-        ComboBox<Category> categoryCombo = new ComboBox<>();
-        List<Category> categories = adminDAO.getAllCategories();
-        categoryCombo.setItems(FXCollections.observableArrayList(categories));
-        categoryCombo.setConverter(new javafx.util.StringConverter<>() {
-            @Override
-            public String toString(Category c) { return c != null ? c.getCategoryName() : ""; }
-            @Override
-            public Category fromString(String string) { return null; }
-        });
-        if (finalProduct.getCategoryId() > 0) {
-            categories.stream().filter(c -> c.getCategoryId() == finalProduct.getCategoryId()).findFirst().ifPresent(categoryCombo::setValue);
-        }
+        ComboBox<Category> categoryCombo = createCategoryCombo(finalProduct);
 
         GridPane formGrid = createProductFormGrid(categoryCombo, nameField, priceField, stockField, descArea, imageBox);
-        dialogBox.getChildren().addAll(titleLabel, formGrid);
-
         HBox buttonBox = createButtonBoxForDialog(() -> {
             try {
                 finalProduct.setName(nameField.getText().trim());
@@ -618,12 +450,7 @@ public class AdminDashboardView {
                 if (categoryCombo.getValue() != null) {
                     finalProduct.setCategoryId(categoryCombo.getValue().getCategoryId());
                 }
-                boolean success;
-                if (isNew) {
-                    success = adminDAO.addProduct(finalProduct, admin.getAdminId());
-                } else {
-                    success = adminDAO.updateProduct(finalProduct, admin.getAdminId());
-                }
+                boolean success = isNew ? adminDAO.addProduct(finalProduct, admin.getAdminId()) : adminDAO.updateProduct(finalProduct, admin.getAdminId());
                 if (success) {
                     refreshProductsGrid();
                     dialogStage.close();
@@ -636,16 +463,14 @@ public class AdminDashboardView {
             }
         }, dialogStage::close);
 
-        dialogBox.getChildren().add(buttonBox);
+        dialogBox.getChildren().addAll(titleLabel, formGrid, buttonBox);
         finishDialog(dialogStage, dialogBox);
         dialogStage.showAndWait();
     }
 
     private void deleteProduct(Product product) {
-        boolean confirmed = showCustomConfirm(CONFIRM_DELETE_TITLE, "Удалить товар \"" + product.getName() + "\"?");
-        if (confirmed) {
-            boolean success = adminDAO.deleteProduct(product.getId(), admin.getAdminId());
-            if (success) {
+        if (showCustomConfirm("Удалить товар \"" + product.getName() + "\"?")) {
+            if (adminDAO.deleteProduct(product.getId(), admin.getAdminId())) {
                 refreshProductsGrid();
                 showInfo("Товар удалён");
             } else {
@@ -660,67 +485,28 @@ public class AdminDashboardView {
         container.setPadding(new Insets(20));
         container.setStyle(STYLE_BG_CARD + app.getCurrentBgLight() + ";");
 
-        HBox toolbar = new HBox(10);
-        toolbar.setAlignment(Pos.CENTER_RIGHT);
-        Button refreshButton = new Button(UPDATE_BUTTON_TEXT);
-        app.updateButtonStyle(refreshButton);
-        refreshButton.setOnAction(e -> refreshOrdersGrid());
-        toolbar.getChildren().add(refreshButton);
-
+        HBox toolbar = createRefreshToolbar(this::refreshOrdersGrid);
         ordersGrid = new GridPane();
-        ordersGrid.setPadding(new Insets(10));
-        ordersGrid.setHgap(20);
-        ordersGrid.setVgap(20);
-        ordersGrid.setAlignment(Pos.TOP_CENTER);
-        ordersGrid.setStyle(STYLE_BG_TRANSPARENT);
-
-        ScrollPane scrollPane = new ScrollPane(ordersGrid);
-        scrollPane.setFitToWidth(true);
-        scrollPane.setStyle(STYLE_BG_TRANSPARENT_BOTH);
-        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-
+        configureGridPane(ordersGrid);
+        ScrollPane scrollPane = createScrollPane(ordersGrid);
         container.getChildren().addAll(toolbar, scrollPane);
         return container;
     }
 
     private void refreshOrdersGrid() {
-        ordersGrid.getChildren().clear();
-        List<Order> orders = adminDAO.getAllOrders();
-        int col = 0;
-        int row = 0;
-        final int maxCols = 4;
-        for (Order order : orders) {
-            VBox card = createOrderCard(order);
-            ordersGrid.add(card, col, row);
-            col++;
-            if (col == maxCols) {
-                col = 0;
-                row++;
-            }
-        }
-        if (orders.isEmpty()) {
-            Label emptyLabel = new Label("Нет заказов");
-            emptyLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_18);
-            ordersGrid.add(emptyLabel, 0, 0);
-        }
+        clearAndFillGrid(ordersGrid, adminDAO.getAllOrders(), this::createOrderCard);
     }
 
     private VBox createOrderCard(Order order) {
-        VBox card = new VBox(10);
-        card.setPadding(new Insets(15));
-        card.setPrefWidth(280);
-        card.setStyle(STYLE_BG_CARD + app.getCurrentBgCard() + STYLE_BG_RADIUS_12 +
-                STYLE_EFFECT_SHADOW +
-                STYLE_BORDER + app.getCurrentBorderColor() + STYLE_BORDER_RADIUS_12);
-
+        VBox card = createBaseCard(280);
         Label idLabel = createOrderIdLabel(order);
-        Label userLabel = createUserLabel(order);
-        Label amountLabel = createAmountLabel(order);
+        Label userLabel = createLabel("👤 Пользователь ID: " + order.getCustomerId(), STYLE_FONT_SIZE_12, app.getCurrentTextSecondary());
+        Label amountLabel = createLabel(String.format("💰 Сумма: %.2f ₽", order.getTotalAmount()), STYLE_FONT_SIZE_14_BOLD, app.getCurrentAccentDark());
         Label statusLabel = createStatusLabel(order);
-        Label paymentLabel = createPaymentLabel(order);
-        Label addressLabel = createAddressLabel(order);
-        HBox statusBox = createStatusBox(order);
+        Label paymentLabel = createLabel("💳 Оплата: " + (order.getPaymentMethod() != null && order.getPaymentMethod().equals("CARD") ? "Карта" : "Наличные"), STYLE_FONT_SIZE_12, app.getCurrentTextSecondary());
+        Label addressLabel = createLabel("📍 Адрес: " + Objects.requireNonNullElse(order.getAddress(), NOT_SPECIFIED), STYLE_FONT_SIZE_12, app.getCurrentTextSecondary());
+        addressLabel.setWrapText(true);
+        HBox statusBox = createOrderStatusBox(order);
 
         card.getChildren().addAll(idLabel, userLabel, amountLabel, statusLabel, paymentLabel, addressLabel, statusBox);
         return card;
@@ -729,18 +515,6 @@ public class AdminDashboardView {
     private Label createOrderIdLabel(Order order) {
         Label label = new Label("Заказ №" + order.getOrderId());
         label.setStyle(STYLE_TEXT_FILL + app.getCurrentTextPrimary() + STYLE_FONT_SIZE_16_BOLD);
-        return label;
-    }
-
-    private Label createUserLabel(Order order) {
-        Label label = new Label("👤 Пользователь ID: " + order.getCustomerId());
-        label.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_12);
-        return label;
-    }
-
-    private Label createAmountLabel(Order order) {
-        Label label = new Label(String.format("💰 Сумма: %.2f ₽", order.getTotalAmount()));
-        label.setStyle(STYLE_TEXT_FILL + app.getCurrentAccentDark() + STYLE_FONT_SIZE_14_BOLD);
         return label;
     }
 
@@ -753,44 +527,26 @@ public class AdminDashboardView {
             case STATUS_CANCELLED -> "❌ Отменен";
             default -> order.getStatus();
         };
-        Label statusLabel = new Label("📌 Статус: " + statusText);
         String statusColor = getStatusColor(order);
+        Label statusLabel = new Label("📌 Статус: " + statusText);
         statusLabel.setStyle(STYLE_TEXT_FILL + statusColor + STYLE_FONT_SIZE_12 + STYLE_FONT_WEIGHT_BOLD);
         return statusLabel;
     }
 
     private String getStatusColor(Order order) {
-        if (STATUS_DELIVERED.equals(order.getStatus())) {
-            return app.getCurrentSuccess();
-        } else if (STATUS_CANCELLED.equals(order.getStatus())) {
-            return app.getCurrentError();
-        } else {
-            return app.getCurrentTextSecondary();
-        }
+        if (STATUS_DELIVERED.equals(order.getStatus())) return app.getCurrentSuccess();
+        if (STATUS_CANCELLED.equals(order.getStatus())) return app.getCurrentError();
+        return app.getCurrentTextSecondary();
     }
 
-    private Label createPaymentLabel(Order order) {
-        Label label = new Label("💳 Оплата: " + (order.getPaymentMethod() != null && order.getPaymentMethod().equals("CARD") ? "Карта" : "Наличные"));
-        label.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_12);
-        return label;
-    }
-
-    private Label createAddressLabel(Order order) {
-        Label label = new Label("📍 Адрес: " + Objects.requireNonNullElse(order.getAddress(), NOT_SPECIFIED));
-        label.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_12);
-        label.setWrapText(true);
-        return label;
-    }
-
-    private HBox createStatusBox(Order order) {
+    private HBox createOrderStatusBox(Order order) {
         ComboBox<String> statusCombo = new ComboBox<>();
         statusCombo.getItems().addAll("PENDING", "PAID", "SHIPPED", STATUS_DELIVERED, STATUS_CANCELLED);
         statusCombo.setValue(order.getStatus());
         statusCombo.setStyle(STYLE_BG_CARD + app.getCurrentBgLight() + "; -fx-text-fill: " + app.getCurrentTextPrimary() + ";");
         statusCombo.setPrefWidth(120);
 
-        Button updateButton = new Button(UPDATE_BUTTON_TEXT);
-        updateButton.setStyle("-fx-background-color: " + app.getCurrentAccent() + STYLE_TEXT_FILL_WHITE + STYLE_FONT_SIZE_12 + STYLE_PADDING_5_10 + STYLE_BG_RADIUS_6 + STYLE_CURSOR_HAND);
+        Button updateButton = createColoredButton(UPDATE_BUTTON_TEXT, app.getCurrentAccent());
         updateButton.setOnAction(e -> {
             adminDAO.updateOrderStatus(order.getOrderId(), statusCombo.getValue(), admin.getAdminId());
             refreshOrdersGrid();
@@ -819,65 +575,27 @@ public class AdminDashboardView {
         toolbar.getChildren().addAll(addButton, refreshButton);
 
         categoriesGrid = new GridPane();
-        categoriesGrid.setPadding(new Insets(10));
-        categoriesGrid.setHgap(20);
-        categoriesGrid.setVgap(20);
-        categoriesGrid.setAlignment(Pos.TOP_CENTER);
-        categoriesGrid.setStyle(STYLE_BG_TRANSPARENT);
-
-        ScrollPane scrollPane = new ScrollPane(categoriesGrid);
-        scrollPane.setFitToWidth(true);
-        scrollPane.setStyle(STYLE_BG_TRANSPARENT_BOTH);
-        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-
+        configureGridPane(categoriesGrid);
+        ScrollPane scrollPane = createScrollPane(categoriesGrid);
         container.getChildren().addAll(toolbar, scrollPane);
         return container;
     }
 
     private void refreshCategoriesGrid() {
-        categoriesGrid.getChildren().clear();
-        List<Category> categories = adminDAO.getAllCategories();
-        int col = 0;
-        int row = 0;
-        final int maxCols = 4;
-        for (Category cat : categories) {
-            VBox card = createCategoryCard(cat);
-            categoriesGrid.add(card, col, row);
-            col++;
-            if (col == maxCols) {
-                col = 0;
-                row++;
-            }
-        }
-        if (categories.isEmpty()) {
-            Label emptyLabel = new Label("Нет категорий");
-            emptyLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_18);
-            categoriesGrid.add(emptyLabel, 0, 0);
-        }
+        clearAndFillGrid(categoriesGrid, adminDAO.getAllCategories(), this::createCategoryCard);
     }
 
     private VBox createCategoryCard(Category category) {
-        VBox card = new VBox(10);
-        card.setPadding(new Insets(15));
-        card.setPrefWidth(260);
-        card.setStyle(STYLE_BG_CARD + app.getCurrentBgCard() + STYLE_BG_RADIUS_12 +
-                STYLE_EFFECT_SHADOW +
-                STYLE_BORDER + app.getCurrentBorderColor() + STYLE_BORDER_RADIUS_12);
-
-        Label nameLabel = new Label("📁 " + category.getCategoryName());
-        nameLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextPrimary() + STYLE_FONT_SIZE_16_BOLD);
-        Label descLabel = new Label(Objects.requireNonNullElse(category.getDescription(), "Без описания"));
-        descLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_12);
+        VBox card = createBaseCard(260);
+        Label nameLabel = createLabel("📁 " + category.getCategoryName(), STYLE_FONT_SIZE_16_BOLD, app.getCurrentTextPrimary());
+        Label descLabel = createLabel(Objects.requireNonNullElse(category.getDescription(), "Без описания"), STYLE_FONT_SIZE_12, app.getCurrentTextSecondary());
         descLabel.setWrapText(true);
 
         HBox buttonsBox = new HBox(8);
         buttonsBox.setAlignment(Pos.CENTER);
-        Button editButton = new Button("Ред.");
-        editButton.setStyle("-fx-background-color: " + app.getCurrentAccent() + STYLE_TEXT_FILL_WHITE + STYLE_FONT_SIZE_12 + STYLE_PADDING_5_10 + STYLE_BG_RADIUS_6 + STYLE_CURSOR_HAND);
+        Button editButton = createColoredButton(BUTTON_EDIT_TEXT, app.getCurrentAccent());
         editButton.setOnAction(e -> showCategoryDialog(category));
-        Button deleteButton = new Button("Удал.");
-        deleteButton.setStyle("-fx-background-color: " + app.getCurrentError() + STYLE_TEXT_FILL_WHITE + STYLE_FONT_SIZE_12 + STYLE_PADDING_5_10 + STYLE_BG_RADIUS_6 + STYLE_CURSOR_HAND);
+        Button deleteButton = createColoredButton(BUTTON_DELETE_TEXT, app.getCurrentError());
         deleteButton.setOnAction(e -> deleteCategory(category));
         buttonsBox.getChildren().addAll(editButton, deleteButton);
 
@@ -887,12 +605,7 @@ public class AdminDashboardView {
 
     private void showCategoryDialog(Category category) {
         boolean isNew = (category == null);
-        final Category finalCategory;
-        if (isNew) {
-            finalCategory = new Category(0, "", "");
-        } else {
-            finalCategory = category;
-        }
+        final Category finalCategory = (isNew) ? new Category(0, "", "") : category;
 
         Stage dialogStage = createDialogStage();
         VBox dialogBox = createBaseDialogBox(500);
@@ -901,41 +614,13 @@ public class AdminDashboardView {
         Label titleLabel = new Label(isNew ? "Добавление категории" : "Редактирование категории");
         titleLabel.setStyle(String.format(STYLE_TITLE_LABEL, app.getCurrentTextPrimary()));
 
-        GridPane grid = new GridPane();
-        grid.setHgap(15);
-        grid.setVgap(12);
-        grid.setPadding(new Insets(10, 0, 10, 0));
-
-        ColumnConstraints col1 = new ColumnConstraints();
-        col1.setMinWidth(80);
-        col1.setPrefWidth(80);
-        col1.setMaxWidth(100);
-        ColumnConstraints col2 = new ColumnConstraints();
-        col2.setHgrow(Priority.ALWAYS);
-        col2.setFillWidth(true);
-        grid.getColumnConstraints().addAll(col1, col2);
-
-        TextField nameField = new TextField(finalCategory.getCategoryName());
-        TextArea descArea = new TextArea(finalCategory.getDescription());
-        descArea.setPrefRowCount(3);
-        descArea.setWrapText(true);
-
-        grid.add(createBoldLabel("Название:"), 0, 0);
-        grid.add(nameField, 1, 0);
-        grid.add(createBoldLabel("Описание:"), 0, 1);
-        grid.add(descArea, 1, 1);
-
-        dialogBox.getChildren().addAll(titleLabel, grid);
-
+        GridPane grid = createCategoryFormGrid(finalCategory);
         HBox buttonBox = createButtonBoxForDialog(() -> {
+            TextField nameField = (TextField) grid.lookup("#nameField");
+            TextArea descArea = (TextArea) grid.lookup("#descArea");
             finalCategory.setCategoryName(nameField.getText().trim());
             finalCategory.setDescription(descArea.getText().trim());
-            boolean success;
-            if (isNew) {
-                success = adminDAO.addCategory(finalCategory, admin.getAdminId());
-            } else {
-                success = adminDAO.updateCategory(finalCategory, admin.getAdminId());
-            }
+            boolean success = isNew ? adminDAO.addCategory(finalCategory, admin.getAdminId()) : adminDAO.updateCategory(finalCategory, admin.getAdminId());
             if (success) {
                 refreshCategoriesGrid();
                 dialogStage.close();
@@ -945,16 +630,14 @@ public class AdminDashboardView {
             }
         }, dialogStage::close);
 
-        dialogBox.getChildren().add(buttonBox);
+        dialogBox.getChildren().addAll(titleLabel, grid, buttonBox);
         finishDialog(dialogStage, dialogBox);
         dialogStage.showAndWait();
     }
 
     private void deleteCategory(Category category) {
-        boolean confirmed = showCustomConfirm(CONFIRM_DELETE_TITLE, "Удалить категорию \"" + category.getCategoryName() + "\"?");
-        if (confirmed) {
-            boolean success = adminDAO.deleteCategory(category.getCategoryId(), admin.getAdminId());
-            if (success) {
+        if (showCustomConfirm("Удалить категорию \"" + category.getCategoryName() + "\"?")) {
+            if (adminDAO.deleteCategory(category.getCategoryId(), admin.getAdminId())) {
                 refreshCategoriesGrid();
                 showInfo("Категория удалена");
             } else {
@@ -970,81 +653,27 @@ public class AdminDashboardView {
         container.setStyle(STYLE_BG_CARD + app.getCurrentBgLight() + ";");
 
         boolean isSuperAdmin = admin != null && "SUPER_ADMIN".equals(admin.getRole());
-
-        HBox toolbar = new HBox(10);
-        toolbar.setAlignment(Pos.CENTER_RIGHT);
-        if (!isSuperAdmin) {
-            Label warningLabel = new Label("Только главный администратор может назначать роли");
-            warningLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentError() + STYLE_FONT_SIZE_12 + STYLE_FONT_WEIGHT_BOLD);
-            toolbar.getChildren().add(warningLabel);
-        } else {
-            Label infoLabel = new Label("Вы имеете права главного администратора");
-            infoLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentSuccess() + STYLE_FONT_SIZE_12 + STYLE_FONT_WEIGHT_BOLD);
-            toolbar.getChildren().add(infoLabel);
-        }
-        Button refreshButton = new Button(UPDATE_BUTTON_TEXT);
-        app.updateButtonStyle(refreshButton);
-        refreshButton.setOnAction(e -> refreshUsersForRolesGrid());
-        toolbar.getChildren().add(refreshButton);
-
+        HBox toolbar = createRoleToolbar(isSuperAdmin);
         usersForRolesGrid = new GridPane();
-        usersForRolesGrid.setPadding(new Insets(10));
-        usersForRolesGrid.setHgap(20);
-        usersForRolesGrid.setVgap(20);
-        usersForRolesGrid.setAlignment(Pos.TOP_CENTER);
-        usersForRolesGrid.setStyle(STYLE_BG_TRANSPARENT);
-
-        ScrollPane scrollPane = new ScrollPane(usersForRolesGrid);
-        scrollPane.setFitToWidth(true);
-        scrollPane.setStyle(STYLE_BG_TRANSPARENT_BOTH);
-        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-
+        configureGridPane(usersForRolesGrid);
+        ScrollPane scrollPane = createScrollPane(usersForRolesGrid);
         container.getChildren().addAll(toolbar, scrollPane);
         return container;
     }
 
     private void refreshUsersForRolesGrid() {
-        usersForRolesGrid.getChildren().clear();
-        List<User> users = adminDAO.getAllUsers();
-        int col = 0;
-        int row = 0;
-        final int maxCols = 4;
-        for (User user : users) {
-            VBox card = createUserRoleCard(user);
-            usersForRolesGrid.add(card, col, row);
-            col++;
-            if (col == maxCols) {
-                col = 0;
-                row++;
-            }
-        }
-        if (users.isEmpty()) {
-            Label emptyLabel = new Label("Нет пользователей");
-            emptyLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_18);
-            usersForRolesGrid.add(emptyLabel, 0, 0);
-        }
+        clearAndFillGrid(usersForRolesGrid, adminDAO.getAllUsers(), this::createUserRoleCard);
     }
 
     private VBox createUserRoleCard(User user) {
         boolean isSuperAdmin = admin != null && "SUPER_ADMIN".equals(admin.getRole());
-        VBox card = new VBox(10);
-        card.setPadding(new Insets(15));
-        card.setPrefWidth(300);
-        card.setStyle(STYLE_BG_CARD + app.getCurrentBgCard() + STYLE_BG_RADIUS_12 +
-                STYLE_EFFECT_SHADOW +
-                STYLE_BORDER + app.getCurrentBorderColor() + STYLE_BORDER_RADIUS_12);
-
-        Label nameLabel = new Label(user.getUsername());
-        nameLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextPrimary() + STYLE_FONT_SIZE_16_BOLD);
-        Label emailLabel = new Label("📧 " + user.getEmail());
-        emailLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_12);
-        Label phoneLabel = new Label("📱 " + Objects.requireNonNullElse(user.getPhone(), NOT_SPECIFIED));
-        phoneLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_12);
-        Label bonusLabel = new Label("🎁 Бонусы: " + user.getBonusPoints());
-        bonusLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentAccentDark() + "; -fx-font-size: 13px; -fx-font-weight: bold;");
-        Label adminStatusLabel = new Label(user.isAdmin() ? "👑 Администратор" : "👤 Пользователь");
-        adminStatusLabel.setStyle(STYLE_TEXT_FILL + (user.isAdmin() ? app.getCurrentSuccess() : app.getCurrentTextSecondary()) + STYLE_FONT_SIZE_12);
+        VBox card = createBaseCard(300);
+        Label nameLabel = createLabel(user.getUsername(), STYLE_FONT_SIZE_16_BOLD, app.getCurrentTextPrimary());
+        Label emailLabel = createLabel("📧 " + user.getEmail(), STYLE_FONT_SIZE_12, app.getCurrentTextSecondary());
+        Label phoneLabel = createLabel("📱 " + Objects.requireNonNullElse(user.getPhone(), NOT_SPECIFIED), STYLE_FONT_SIZE_12, app.getCurrentTextSecondary());
+        Label bonusLabel = createBoldLabel("🎁 Бонусы: " + user.getBonusPoints(), "13px", app.getCurrentAccentDark());
+        Label adminStatusLabel = createLabel(user.isAdmin() ? "👑 Администратор" : "👤 Пользователь", STYLE_FONT_SIZE_12,
+                user.isAdmin() ? app.getCurrentSuccess() : app.getCurrentTextSecondary());
 
         HBox controlsBox = createRoleControlsBox(user, isSuperAdmin);
         card.getChildren().addAll(nameLabel, emailLabel, phoneLabel, bonusLabel, adminStatusLabel, controlsBox);
@@ -1052,10 +681,8 @@ public class AdminDashboardView {
     }
 
     private HBox createRoleControlsBox(User user, boolean isSuperAdmin) {
-        final User finalUser = user;
         HBox controlsBox = new HBox(10);
         controlsBox.setAlignment(Pos.CENTER_LEFT);
-
         if (isSuperAdmin) {
             ComboBox<com.kurcashi.models.AdminRole> roleCombo = new ComboBox<>();
             List<com.kurcashi.models.AdminRole> roles = adminDAO.getAllRoles();
@@ -1072,31 +699,27 @@ public class AdminDashboardView {
             });
             roleCombo.setPrefWidth(150);
             roleCombo.setStyle(STYLE_BG_CARD + app.getCurrentBgLight() + "; -fx-text-fill: " + app.getCurrentTextPrimary() + ";");
-            if (!roles.isEmpty()) {
-                roleCombo.setValue(roles.getFirst());
-            }
+            if (!roles.isEmpty()) roleCombo.setValue(roles.getFirst());
 
-            Button assignButton = new Button("Назначить");
-            assignButton.setStyle("-fx-background-color: " + app.getCurrentAccent() + STYLE_TEXT_FILL_WHITE + STYLE_FONT_SIZE_12 + "; -fx-padding: 5 12;" + STYLE_BG_RADIUS_6 + STYLE_CURSOR_HAND);
+            Button assignButton = createColoredButton("Назначить", app.getCurrentAccent());
             assignButton.setOnAction(e -> {
                 if (roleCombo.getValue() != null) {
-                    adminDAO.assignAdminRole(finalUser.getUserId(), roleCombo.getValue().getRoleCode(), admin.getAdminId());
+                    adminDAO.assignAdminRole(user.getUserId(), roleCombo.getValue().getRoleCode(), admin.getAdminId());
                     refreshUsersForRolesGrid();
                     refreshUsersGrid();
                     showInfo("Роль назначена");
                 }
             });
 
-            Button revokeButton = new Button("Снять права");
-            revokeButton.setStyle("-fx-background-color: " + app.getCurrentError() + STYLE_TEXT_FILL_WHITE + STYLE_FONT_SIZE_12 + "; -fx-padding: 5 12;" + STYLE_BG_RADIUS_6 + STYLE_CURSOR_HAND);
+            Button revokeButton = createColoredButton("Снять права", app.getCurrentError());
             revokeButton.setOnAction(e -> {
-                adminDAO.revokeAdminRole(finalUser.getUserId(), admin.getAdminId());
+                adminDAO.revokeAdminRole(user.getUserId(), admin.getAdminId());
                 refreshUsersForRolesGrid();
                 refreshUsersGrid();
                 showInfo("Права сняты");
             });
 
-            if (finalUser.isAdmin()) {
+            if (user.isAdmin()) {
                 assignButton.setDisable(true);
                 roleCombo.setDisable(true);
                 revokeButton.setDisable(false);
@@ -1114,57 +737,46 @@ public class AdminDashboardView {
         return controlsBox;
     }
 
+    private HBox createRoleToolbar(boolean isSuperAdmin) {
+        HBox toolbar = new HBox(10);
+        toolbar.setAlignment(Pos.CENTER_RIGHT);
+        if (!isSuperAdmin) {
+            Label warningLabel = new Label("Только главный администратор может назначать роли");
+            warningLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentError() + STYLE_FONT_SIZE_12 + STYLE_FONT_WEIGHT_BOLD);
+            toolbar.getChildren().add(warningLabel);
+        } else {
+            Label infoLabel = new Label("Вы имеете права главного администратора");
+            infoLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentSuccess() + STYLE_FONT_SIZE_12 + STYLE_FONT_WEIGHT_BOLD);
+            toolbar.getChildren().add(infoLabel);
+        }
+        Button refreshButton = new Button(UPDATE_BUTTON_TEXT);
+        app.updateButtonStyle(refreshButton);
+        refreshButton.setOnAction(e -> refreshUsersForRolesGrid());
+        toolbar.getChildren().add(refreshButton);
+        return toolbar;
+    }
+
     // ==================== ЖУРНАЛ ДЕЙСТВИЙ ====================
     private VBox createLogsTab() {
         VBox container = new VBox(15);
         container.setPadding(new Insets(20));
         container.setStyle(STYLE_BG_CARD + app.getCurrentBgLight() + ";");
 
-        HBox toolbar = new HBox(10);
-        toolbar.setAlignment(Pos.CENTER_RIGHT);
-        Button refreshButton = new Button(UPDATE_BUTTON_TEXT);
-        app.updateButtonStyle(refreshButton);
-        refreshButton.setOnAction(e -> refreshLogsGrid());
-        toolbar.getChildren().add(refreshButton);
-
+        HBox toolbar = createRefreshToolbar(this::refreshLogsGrid);
         logsGrid = new GridPane();
         logsGrid.setPadding(new Insets(10));
         logsGrid.setHgap(20);
         logsGrid.setVgap(20);
         logsGrid.setAlignment(Pos.TOP_CENTER);
         logsGrid.setStyle(STYLE_BG_TRANSPARENT);
-
-        ScrollPane scrollPane = new ScrollPane(logsGrid);
-        scrollPane.setFitToWidth(true);
-        scrollPane.setStyle(STYLE_BG_TRANSPARENT_BOTH);
-        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        ScrollPane scrollPane = createScrollPane(logsGrid);
         scrollPane.setPrefHeight(500);
-
         container.getChildren().addAll(toolbar, scrollPane);
         return container;
     }
 
     private void refreshLogsGrid() {
-        logsGrid.getChildren().clear();
-        List<AdminDAO.AdminLog> logs = adminDAO.getAdminLogs(100);
-        int col = 0;
-        int row = 0;
-        final int maxCols = 1;
-        for (AdminDAO.AdminLog log : logs) {
-            VBox card = createLogCard(log);
-            logsGrid.add(card, col, row);
-            col++;
-            if (col == maxCols) {
-                col = 0;
-                row++;
-            }
-        }
-        if (logs.isEmpty()) {
-            Label emptyLabel = new Label("Нет записей в журнале");
-            emptyLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_18);
-            logsGrid.add(emptyLabel, 0, 0);
-        }
+        clearAndFillGrid(logsGrid, adminDAO.getAdminLogs(100), this::createLogCard);
     }
 
     private VBox createLogCard(AdminDAO.AdminLog log) {
@@ -1177,33 +789,340 @@ public class AdminDashboardView {
 
         HBox header = new HBox(10);
         header.setAlignment(Pos.CENTER_LEFT);
-        Label adminLabel = new Label("👤 " + (log.getAdminUsername() != null ? log.getAdminUsername() : "Unknown"));
-        adminLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextPrimary() + STYLE_FONT_SIZE_14_BOLD);
-        Label actionLabel = new Label("[" + log.getActionType() + "]");
-        actionLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentAccent() + STYLE_FONT_SIZE_12 + STYLE_FONT_WEIGHT_BOLD);
+        Label adminLabel = createLabel("👤 " + (log.getAdminUsername() != null ? log.getAdminUsername() : "Unknown"), STYLE_FONT_SIZE_14_BOLD, app.getCurrentTextPrimary());
+        Label actionLabel = createLabel("[" + log.getActionType() + "]", STYLE_FONT_SIZE_12 + STYLE_FONT_WEIGHT_BOLD, app.getCurrentAccent());
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        Label dateLabel = new Label(log.getCreatedAt() != null ? log.getCreatedAt().toString().substring(0, 19) : "");
-        dateLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + "; -fx-font-size: 11px;");
+        Label dateLabel = createLabel(log.getCreatedAt() != null ? log.getCreatedAt().toString().substring(0, 19) : "", "; -fx-font-size: 11px;", app.getCurrentTextSecondary());
         header.getChildren().addAll(adminLabel, actionLabel, spacer, dateLabel);
 
-        Label targetLabel = new Label("Объект: " + log.getTargetType() + " (ID: " + log.getTargetId() + ")");
-        targetLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_12);
-        Label detailsLabel = new Label("📝 " + (log.getDetails() != null ? log.getDetails() : "Нет подробностей"));
-        detailsLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextPrimary() + STYLE_FONT_SIZE_12);
+        Label targetLabel = createLabel("Объект: " + log.getTargetType() + " (ID: " + log.getTargetId() + ")", STYLE_FONT_SIZE_12, app.getCurrentTextSecondary());
+        Label detailsLabel = createLabel("📝 " + (log.getDetails() != null ? log.getDetails() : "Нет подробностей"), STYLE_FONT_SIZE_12, app.getCurrentTextPrimary());
         detailsLabel.setWrapText(true);
 
         card.getChildren().addAll(header, targetLabel, detailsLabel);
         return card;
     }
 
-    // ==================== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ДЛЯ ДИАЛОГОВ ====================
+    // ==================== ТЕГИ ====================
+    private VBox createTagsTab() {
+        VBox container = new VBox(15);
+        container.setPadding(new Insets(20));
+        container.setStyle(STYLE_BG_CARD + app.getCurrentBgLight() + ";");
+
+        HBox toolbar = new HBox(10);
+        toolbar.setAlignment(Pos.CENTER_RIGHT);
+        Button addButton = new Button("Добавить тег");
+        app.updateButtonStyle(addButton);
+        addButton.setOnAction(e -> showTagDialog(null));
+        Button refreshButton = new Button(UPDATE_BUTTON_TEXT);
+        app.updateButtonStyle(refreshButton);
+        refreshButton.setOnAction(e -> refreshTagsGrid());
+        toolbar.getChildren().addAll(addButton, refreshButton);
+
+        tagsGrid = new GridPane();
+        configureGridPane(tagsGrid);
+        ScrollPane scrollPane = createScrollPane(tagsGrid);
+        container.getChildren().addAll(toolbar, scrollPane);
+        return container;
+    }
+
+    private void refreshTagsGrid() {
+        clearAndFillGrid(tagsGrid, tagDAO.getAllTags(), this::createTagCard);
+    }
+
+    private VBox createTagCard(Tag tag) {
+        VBox card = createBaseCard(260);
+        Label nameLabel = createLabel("🏷️ " + tag.getTagName(), STYLE_FONT_SIZE_16_BOLD, app.getCurrentTextPrimary());
+        Label orderLabel = createLabel(LABEL_ORDER + " " + tag.getDisplayOrder(), STYLE_FONT_SIZE_12, app.getCurrentTextSecondary());
+        Label activeLabel = createLabel(tag.isActive() ? "🟢 Активен" : "🔴 Неактивен", STYLE_FONT_SIZE_12,
+                tag.isActive() ? app.getCurrentSuccess() : app.getCurrentError());
+
+        HBox buttonsBox = new HBox(8);
+        buttonsBox.setAlignment(Pos.CENTER);
+        Button editButton = createColoredButton(BUTTON_EDIT_TEXT, app.getCurrentAccent());
+        editButton.setOnAction(e -> showTagDialog(tag));
+        Button deleteButton = createColoredButton(BUTTON_DELETE_TEXT, app.getCurrentError());
+        deleteButton.setOnAction(e -> deleteTag(tag));
+        buttonsBox.getChildren().addAll(editButton, deleteButton);
+
+        card.getChildren().addAll(nameLabel, orderLabel, activeLabel, buttonsBox);
+        return card;
+    }
+
+    private void showTagDialog(Tag tag) {
+        boolean isNew = (tag == null);
+        final Tag finalTag = (isNew) ? new Tag("", 0) : tag;
+
+        Stage dialogStage = createDialogStage();
+        VBox dialogBox = createBaseDialogBox(450);
+        dialogBox.setAlignment(Pos.TOP_CENTER);
+
+        Label titleLabel = new Label(isNew ? "Добавление тега" : "Редактирование тега");
+        titleLabel.setStyle(String.format(STYLE_TITLE_LABEL, app.getCurrentTextPrimary()));
+
+        GridPane grid = createTagFormGrid(finalTag);
+        HBox buttonBox = createButtonBoxForDialog(() -> {
+            TextField nameField = (TextField) grid.lookup("#tagNameField");
+            TextField orderField = (TextField) grid.lookup("#tagOrderField");
+            CheckBox activeCheck = (CheckBox) grid.lookup("#tagActiveCheck");
+
+            String name = nameField.getText().trim();
+            if (name.isEmpty()) {
+                showError("Название тега не может быть пустым");
+                return;
+            }
+            try {
+                int order = Integer.parseInt(orderField.getText());
+                finalTag.setTagName(name);
+                finalTag.setDisplayOrder(order);
+                finalTag.setActive(activeCheck.isSelected());
+
+                boolean success = isNew ? tagDAO.addTag(finalTag) : tagDAO.updateTag(finalTag);
+                if (success) {
+                    refreshTagsGrid();
+                    dialogStage.close();
+                    showInfo(isNew ? "Тег добавлен" : "Тег обновлён");
+                    app.refreshTags();
+                } else {
+                    showError("Ошибка сохранения тега");
+                }
+            } catch (NumberFormatException ex) {
+                showError("Порядок должен быть числом");
+            }
+        }, dialogStage::close);
+
+        dialogBox.getChildren().addAll(titleLabel, grid, buttonBox);
+        finishDialog(dialogStage, dialogBox);
+        dialogStage.showAndWait();
+    }
+
+    private void deleteTag(Tag tag) {
+        if (showCustomConfirm("Удалить тег \"" + tag.getTagName() + "\"?")) {
+            if (tagDAO.deleteTag(tag.getTagId())) {
+                refreshTagsGrid();
+                showInfo("Тег удалён");
+                app.refreshTags();
+            } else {
+                showError("Не удалось удалить тег");
+            }
+        }
+    }
+
+    // ==================== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ====================
+    private HBox createRefreshToolbar(Runnable refreshAction) {
+        HBox toolbar = new HBox(10);
+        toolbar.setAlignment(Pos.CENTER_RIGHT);
+        Button refreshButton = new Button(UPDATE_BUTTON_TEXT);
+        app.updateButtonStyle(refreshButton);
+        refreshButton.setOnAction(e -> refreshAction.run());
+        toolbar.getChildren().add(refreshButton);
+        return toolbar;
+    }
+
+    private <T> void clearAndFillGrid(GridPane grid, List<T> items, java.util.function.Function<T, VBox> cardCreator) {
+        grid.getChildren().clear();
+        int col = 0;
+        int row = 0;
+        int maxCols = (grid == logsGrid) ? 1 : 4;
+        for (T item : items) {
+            VBox card = cardCreator.apply(item);
+            grid.add(card, col, row);
+            col++;
+            if (col >= maxCols) {
+                col = 0;
+                row++;
+            }
+        }
+        if (items.isEmpty()) {
+            Label emptyLabel = new Label("Нет данных");
+            emptyLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + STYLE_FONT_SIZE_18);
+            grid.add(emptyLabel, 0, 0);
+        }
+    }
+
+    private void configureGridPane(GridPane grid) {
+        grid.setPadding(new Insets(10));
+        grid.setHgap(20);
+        grid.setVgap(20);
+        grid.setAlignment(Pos.TOP_CENTER);
+        grid.setStyle(STYLE_BG_TRANSPARENT);
+    }
+
+    private ScrollPane createScrollPane(GridPane grid) {
+        ScrollPane scrollPane = new ScrollPane(grid);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle(STYLE_BG_TRANSPARENT_BOTH);
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        return scrollPane;
+    }
+
+    private VBox createBaseCard(double prefWidth) {
+        VBox card = new VBox(10);
+        card.setPadding(new Insets(15));
+        card.setPrefWidth(prefWidth);
+        card.setStyle(STYLE_BG_CARD + app.getCurrentBgCard() + STYLE_BG_RADIUS_12 +
+                STYLE_EFFECT_SHADOW +
+                STYLE_BORDER + app.getCurrentBorderColor() + STYLE_BORDER_RADIUS_12);
+        return card;
+    }
+
+    private Label createLabel(String text, String additionalStyle, String color) {
+        Label label = new Label(text);
+        label.setStyle(STYLE_TEXT_FILL + color + additionalStyle);
+        return label;
+    }
+
+    // Перегрузка createBoldLabel с одним аргументом (использует стандартные размер и цвет)
+    private Label createBoldLabel(String text) {
+        return createBoldLabel(text, "14px", app.getCurrentTextPrimary());
+    }
+
+    private Label createBoldLabel(String text, String fontSize, String color) {
+        Label label = new Label(text);
+        label.setStyle(STYLE_TEXT_FILL + color + "; -fx-font-size: " + fontSize + STYLE_FONT_WEIGHT_BOLD);
+        return label;
+    }
+
+    private Button createColoredButton(String text, String bgColor) {
+        Button button = new Button(text);
+        button.setStyle("-fx-background-color: " + bgColor + STYLE_TEXT_FILL_WHITE + STYLE_FONT_SIZE_12 + STYLE_PADDING_5_10 + STYLE_BG_RADIUS_6 + STYLE_CURSOR_HAND);
+        return button;
+    }
+
+    private GridPane createProductFormGrid(ComboBox<Category> categoryCombo, TextField nameField, TextField priceField,
+                                           TextField stockField, TextArea descArea, HBox imageBox) {
+        GridPane grid = new GridPane();
+        grid.setHgap(15);
+        grid.setVgap(12);
+        grid.setPadding(new Insets(10, 0, 10, 0));
+        ColumnConstraints col1 = new ColumnConstraints(100, 100, 120);
+        ColumnConstraints col2 = new ColumnConstraints();
+        col2.setHgrow(Priority.ALWAYS);
+        grid.getColumnConstraints().addAll(col1, col2);
+
+        grid.add(createBoldLabel(LABEL_NAME), 0, 0);
+        grid.add(nameField, 1, 0);
+        grid.add(createBoldLabel(LABEL_PRICE), 0, 1);
+        grid.add(priceField, 1, 1);
+        grid.add(createBoldLabel(LABEL_STOCK), 0, 2);
+        grid.add(stockField, 1, 2);
+        grid.add(createBoldLabel(LABEL_DESCRIPTION), 0, 3);
+        grid.add(descArea, 1, 3);
+        grid.add(createBoldLabel(LABEL_IMAGE), 0, 4);
+        grid.add(imageBox, 1, 4);
+        grid.add(createBoldLabel(LABEL_CATEGORY), 0, 5);
+        grid.add(categoryCombo, 1, 5);
+        return grid;
+    }
+
+    private GridPane createCategoryFormGrid(Category category) {
+        GridPane grid = new GridPane();
+        grid.setHgap(15);
+        grid.setVgap(12);
+        grid.setPadding(new Insets(10, 0, 10, 0));
+        ColumnConstraints col1 = new ColumnConstraints(80, 80, 100);
+        ColumnConstraints col2 = new ColumnConstraints();
+        col2.setHgrow(Priority.ALWAYS);
+        grid.getColumnConstraints().addAll(col1, col2);
+
+        TextField nameField = new TextField(category.getCategoryName());
+        nameField.setId("nameField");
+        TextArea descArea = new TextArea(category.getDescription());
+        descArea.setId("descArea");
+        descArea.setPrefRowCount(3);
+        descArea.setWrapText(true);
+
+        grid.add(createBoldLabel(LABEL_NAME), 0, 0);
+        grid.add(nameField, 1, 0);
+        grid.add(createBoldLabel(LABEL_DESCRIPTION), 0, 1);
+        grid.add(descArea, 1, 1);
+        return grid;
+    }
+
+    private GridPane createTagFormGrid(Tag tag) {
+        GridPane grid = new GridPane();
+        grid.setHgap(15);
+        grid.setVgap(12);
+        grid.setPadding(new Insets(10, 0, 10, 0));
+        ColumnConstraints col1 = new ColumnConstraints(80, 80, 100);
+        ColumnConstraints col2 = new ColumnConstraints();
+        col2.setHgrow(Priority.ALWAYS);
+        grid.getColumnConstraints().addAll(col1, col2);
+
+        TextField nameField = new TextField(tag.getTagName());
+        nameField.setId("tagNameField");
+        TextField orderField = new TextField(String.valueOf(tag.getDisplayOrder()));
+        orderField.setId("tagOrderField");
+        CheckBox activeCheck = new CheckBox("Активен");
+        activeCheck.setId("tagActiveCheck");
+        activeCheck.setSelected(tag.isActive());
+
+        grid.add(createBoldLabel(LABEL_NAME), 0, 0);
+        grid.add(nameField, 1, 0);
+        grid.add(createBoldLabel(LABEL_ORDER), 0, 1);
+        grid.add(orderField, 1, 1);
+        grid.add(activeCheck, 1, 2);
+        return grid;
+    }
+
+    private ComboBox<Category> createCategoryCombo(Product product) {
+        ComboBox<Category> combo = new ComboBox<>();
+        List<Category> categories = adminDAO.getAllCategories();
+        combo.setItems(FXCollections.observableArrayList(categories));
+        combo.setConverter(new javafx.util.StringConverter<>() {
+            @Override
+            public String toString(Category c) { return c != null ? c.getCategoryName() : ""; }
+            @Override
+            public Category fromString(String string) { return null; }
+        });
+        if (product.getCategoryId() > 0) {
+            categories.stream().filter(c -> c.getCategoryId() == product.getCategoryId()).findFirst().ifPresent(combo::setValue);
+        }
+        return combo;
+    }
+
+    private HBox createImageUploadBox(TextField imageField, Stage ownerStage) {
+        Button chooseImageButton = new Button("Выбрать изображение");
+        chooseImageButton.setStyle("-fx-background-color: " + app.getCurrentAccent() + STYLE_TEXT_FILL_WHITE + STYLE_FONT_SIZE_12 + STYLE_PADDING_5_10 + STYLE_BG_RADIUS_6 + STYLE_CURSOR_HAND);
+        chooseImageButton.setOnAction(e -> {
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Выберите изображение товара");
+            fileChooser.getExtensionFilters().addAll(
+                    new FileChooser.ExtensionFilter("Изображения", "*.png", "*.jpg", "*.jpeg", "*.gif")
+            );
+            File selectedFile = fileChooser.showOpenDialog(ownerStage);
+            if (selectedFile != null) {
+                String ext = "";
+                String fileName = selectedFile.getName();
+                int dotIndex = fileName.lastIndexOf('.');
+                if (dotIndex > 0) ext = fileName.substring(dotIndex);
+                String uniqueName = "product_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 8) + ext;
+                File destDir = new File(IMAGES_DIR_PATH);
+                if (!destDir.exists() && !destDir.mkdirs()) {
+                    showError("Не удалось создать папку для изображений");
+                    return;
+                }
+                File destFile = new File(destDir, uniqueName);
+                try {
+                    Files.copy(selectedFile.toPath(), destFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                    imageField.setText(uniqueName);
+                    showInfo("Изображение загружено: " + uniqueName);
+                } catch (IOException ex) {
+                    showError("Ошибка копирования файла: " + ex.getMessage());
+                }
+            }
+        });
+        imageField.setPrefWidth(250);
+        return new HBox(10, imageField, chooseImageButton);
+    }
+
     private Stage createDialogStage() {
         Stage stage = new Stage();
         stage.initModality(Modality.APPLICATION_MODAL);
         stage.initOwner(app.getPrimaryStage());
         stage.initStyle(StageStyle.TRANSPARENT);
-        stage.setTitle("");
         return stage;
     }
 
@@ -1270,12 +1189,12 @@ public class AdminDashboardView {
         CustomAlert.show(app.getPrimaryStage(), "Ошибка", message, CustomAlert.AlertType.ERROR);
     }
 
-    private boolean showCustomConfirm(String title, String message) {
+    private boolean showCustomConfirm(String message) {
         Stage confirmStage = createDialogStage();
         VBox dialogBox = createBaseDialogBox(400);
         dialogBox.setAlignment(Pos.CENTER);
 
-        Label titleLabel = new Label(title);
+        Label titleLabel = new Label(CONFIRM_DELETE_TITLE);
         titleLabel.setStyle(String.format(STYLE_TITLE_LABEL, app.getCurrentTextPrimary()));
 
         Label messageLabel = new Label(message);
