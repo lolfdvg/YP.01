@@ -6,9 +6,7 @@ import com.kurcashi.utils.PasswordUtils;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
-import javafx.scene.effect.DropShadow;
 import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
 import com.example.kurcashi.BaitDesireApp;
 
 import java.sql.Connection;
@@ -21,14 +19,6 @@ import java.util.logging.Logger;
 public class LoginView {
 
     private static final Logger LOGGER = Logger.getLogger(LoginView.class.getName());
-
-    // Константы для стилей
-    private static final String STYLE_BG_BUTTON_LOGIN = "-fx-background-color: %s; -fx-text-fill: white; -fx-font-size: 16px; -fx-font-weight: bold; -fx-padding: 12; -fx-background-radius: 10; -fx-cursor: hand;";
-    private static final String STYLE_BG_BUTTON_BACK = "-fx-background-color: %s; -fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold; -fx-padding: 10 20; -fx-background-radius: 8; -fx-cursor: hand;";
-    private static final String STYLE_BG_BUTTON_BACK_HOVER = "-fx-background-color: %s; -fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold; -fx-padding: 10 20; -fx-background-radius: 8; -fx-cursor: hand;";
-    private static final String STYLE_BG_CARD = "-fx-background-color: ";
-    private static final String STYLE_TEXT_FILL = "-fx-text-fill: ";
-    private static final String STYLE_FIELD = "-fx-background-color: %s; -fx-text-fill: %s; -fx-border-color: %s; -fx-border-radius: 8; -fx-padding: 12; -fx-font-size: 14px;";
 
     private final BaitDesireApp app;
     private VBox view;
@@ -46,7 +36,7 @@ public class LoginView {
         view = new VBox(20);
         view.setAlignment(Pos.CENTER);
         view.setPadding(new Insets(40));
-        view.setStyle(STYLE_BG_CARD + app.getCurrentBgLight() + ";");
+        view.getStyleClass().add("profile-root");
 
         VBox card = createCard();
         view.getChildren().add(card);
@@ -55,16 +45,8 @@ public class LoginView {
     private VBox createCard() {
         VBox card = new VBox(25);
         card.setAlignment(Pos.CENTER);
-        card.setPadding(new Insets(40));
-        card.setMaxWidth(450);
-        card.setStyle(STYLE_BG_CARD + app.getCurrentBgCard() + "; -fx-background-radius: 20;");
-
-        DropShadow dropShadow = new DropShadow();
-        dropShadow.setRadius(20.0);
-        dropShadow.setOffsetX(5.0);
-        dropShadow.setOffsetY(5.0);
-        dropShadow.setColor(Color.color(0.35, 0.25, 0.3, 0.4));
-        card.setEffect(dropShadow);
+        card.getStyleClass().add("auth-card");
+        card.setMaxHeight(Region.USE_PREF_SIZE); // Чтобы не растягивалось на весь экран
 
         card.getChildren().addAll(createTitleBox(), createInputBox(), createButtonBox(), createRegisterBox());
         return card;
@@ -72,10 +54,10 @@ public class LoginView {
 
     private VBox createTitleBox() {
         Label titleLabel = new Label("🐟 BAIT & DESIRE");
-        titleLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextPrimary() + "; -fx-font-size: 32px; -fx-font-weight: bold;");
+        titleLabel.getStyleClass().add("auth-title");
 
         Label subtitleLabel = new Label("Вход в аккаунт");
-        subtitleLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + "; -fx-font-size: 18px;");
+        subtitleLabel.getStyleClass().add("auth-subtitle");
 
         VBox titleBox = new VBox(5);
         titleBox.setAlignment(Pos.CENTER);
@@ -104,7 +86,7 @@ public class LoginView {
 
     private VBox createLabeledField(String labelText, Control field) {
         Label label = new Label(labelText);
-        label.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + "; -fx-font-size: 14px;");
+        label.getStyleClass().add("auth-label");
         VBox box = new VBox(5);
         box.getChildren().addAll(label, field);
         return box;
@@ -113,7 +95,8 @@ public class LoginView {
     private TextField createUsernameField() {
         TextField field = new TextField();
         field.setPromptText("Введите имя пользователя");
-        field.setStyle(String.format(STYLE_FIELD, app.getCurrentBgLight(), app.getCurrentTextPrimary(), app.getCurrentAccent()));
+        field.getStyleClass().add("auth-field");
+        field.setMaxWidth(Double.MAX_VALUE);
         field.textProperty().addListener((obs, old, newVal) -> {
             if (newVal != null) {
                 String filtered = newVal.replaceAll("[^a-zA-Zа-яА-ЯёЁ0-9]", "");
@@ -126,7 +109,8 @@ public class LoginView {
     private PasswordField createPasswordField() {
         PasswordField field = new PasswordField();
         field.setPromptText("Введите пароль");
-        field.setStyle(String.format(STYLE_FIELD, app.getCurrentBgLight(), app.getCurrentTextPrimary(), app.getCurrentAccent()));
+        field.getStyleClass().add("auth-field");
+        field.setMaxWidth(Double.MAX_VALUE);
         field.textProperty().addListener((obs, old, newVal) -> {
             if (newVal != null && newVal.contains(" ")) field.setText(newVal.replace(" ", ""));
         });
@@ -135,32 +119,27 @@ public class LoginView {
 
     private CheckBox createRememberCheckBox() {
         CheckBox cb = new CheckBox("Запомнить пароль");
-        cb.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + "; -fx-font-size: 13px;");
+        cb.getStyleClass().add("custom-checkbox");
         return cb;
     }
 
     private Label createErrorLabel() {
         Label label = new Label();
-        label.setStyle(STYLE_TEXT_FILL + app.getCurrentError() + "; -fx-font-size: 12px; -fx-padding: 5 0 0 0;");
+        label.getStyleClass().add("form-error-label");
         label.setWrapText(true);
         label.setAlignment(Pos.CENTER);
-        label.setMaxWidth(350);
+        label.setMaxWidth(Double.MAX_VALUE);
         label.setVisible(false);
         return label;
     }
 
     private VBox createButtonBox() {
         Button loginButton = new Button("Войти");
-        loginButton.setPrefWidth(250);
-        loginButton.setStyle(String.format(STYLE_BG_BUTTON_LOGIN, app.getCurrentAccent()));
-        loginButton.setOnMouseEntered(e -> loginButton.setStyle(String.format(STYLE_BG_BUTTON_LOGIN, app.getCurrentAccentDark())));
-        loginButton.setOnMouseExited(e -> loginButton.setStyle(String.format(STYLE_BG_BUTTON_LOGIN, app.getCurrentAccent())));
+        loginButton.getStyleClass().add("btn-auth-primary");
         loginButton.setOnAction(e -> handleLogin());
 
         Button backButton = new Button("← Назад к каталогу");
-        backButton.setStyle(String.format(STYLE_BG_BUTTON_BACK, app.getCurrentTextSecondary()));
-        backButton.setOnMouseEntered(e -> backButton.setStyle(String.format(STYLE_BG_BUTTON_BACK_HOVER, app.getCurrentTextPrimary())));
-        backButton.setOnMouseExited(e -> backButton.setStyle(String.format(STYLE_BG_BUTTON_BACK, app.getCurrentTextSecondary())));
+        backButton.getStyleClass().add("btn-auth-secondary");
         backButton.setOnAction(e -> app.showGuestCatalogView());
 
         VBox buttonBox = new VBox(10);
@@ -173,10 +152,12 @@ public class LoginView {
         HBox registerBox = new HBox(5);
         registerBox.setAlignment(Pos.CENTER);
         Label noAccountLabel = new Label("Нет аккаунта?");
-        noAccountLabel.setStyle(STYLE_TEXT_FILL + app.getCurrentTextSecondary() + ";");
+        noAccountLabel.getStyleClass().add("auth-label");
+
         Hyperlink registerLink = new Hyperlink("Зарегистрироваться");
-        registerLink.setStyle(STYLE_TEXT_FILL + app.getCurrentAccentDark() + "; -fx-border-color: transparent;");
+        registerLink.getStyleClass().add("auth-link");
         registerLink.setOnAction(e -> app.showRegisterView());
+
         registerBox.getChildren().addAll(noAccountLabel, registerLink);
         return registerBox;
     }
@@ -274,7 +255,12 @@ public class LoginView {
                 user.setAdminRole(rs.getString("role"));
             } else {
                 createAdminRecord(user, conn);
-                user.setAdminRole("ADMIN");
+                try (PreparedStatement stmt2 = conn.prepareStatement("SELECT role FROM admins WHERE admin_id = ?")) {
+                    stmt2.setInt(1, user.getUserId());
+                    ResultSet rs2 = stmt2.executeQuery();
+                    if (rs2.next()) user.setAdminRole(rs2.getString("role"));
+                    else user.setAdminRole("ADMIN");
+                }
             }
         } catch (SQLException e) {
             LOGGER.log(Level.WARNING, "Не удалось получить роль администратора", e);
@@ -282,11 +268,22 @@ public class LoginView {
     }
 
     private void createAdminRecord(User user, Connection conn) {
-        String insertSql = "INSERT INTO admins (admin_id, username, email, role, is_active, created_at) VALUES (?, ?, ?, 'ADMIN', true, CURRENT_TIMESTAMP)";
+        String countSql = "SELECT COUNT(*) FROM admins";
+        boolean isFirstAdmin = false;
+        try (java.sql.Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery(countSql)) {
+            if (rs.next() && rs.getInt(1) == 0) isFirstAdmin = true;
+        } catch (SQLException e) {
+            LOGGER.log(Level.WARNING, "Не удалось проверить количество админов", e);
+        }
+
+        String role = isFirstAdmin ? "SUPER_ADMIN" : "ADMIN";
+        String insertSql = "INSERT INTO admins (admin_id, username, email, role, is_active, created_at) VALUES (?, ?, ?, ?, true, CURRENT_TIMESTAMP)";
         try (PreparedStatement stmt = conn.prepareStatement(insertSql)) {
             stmt.setInt(1, user.getUserId());
             stmt.setString(2, user.getUsername());
             stmt.setString(3, user.getEmail());
+            stmt.setString(4, role);
             stmt.executeUpdate();
         } catch (SQLException e) {
             LOGGER.log(Level.WARNING, "Не удалось создать запись администратора", e);
